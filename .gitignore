@@ -37,3 +37,6 @@ credentials.json
 
 # Claude Code
 .claude/
+
+# Claude Code memory
+CLAUDE.md
