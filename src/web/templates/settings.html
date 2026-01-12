@@ -73,7 +73,8 @@
             </div>
             <div class="form-group">
                 <label for="pagerduty-key">Events API v2 Routing Key</label>
-                <input type="password" id="pagerduty-key" placeholder="Enter routing key">
+                <input type="text" id="pagerduty-key" placeholder="Enter routing key"
+                       value="{{ config.alerting.pagerduty.routing_key if config and config.alerting.pagerduty.routing_key else '' }}">
                 <span class="help-text">Get this from PagerDuty > Service > Integrations > Events API v2</span>
             </div>
             <div class="form-group">
@@ -98,7 +99,8 @@
             </div>
             <div class="form-group">
                 <label for="healthchecks-url">Ping URL</label>
-                <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid">
+                <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid"
+                       value="{{ config.alerting.healthchecks.ping_url if config and config.alerting.healthchecks.ping_url else '' }}">
                 <span class="help-text">Get this from Healthchecks.io > Check > Ping URL</span>
             </div>
             <div class="form-group">
