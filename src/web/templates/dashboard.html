@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ app_name }}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- State Banner -->
+    <div id="state-banner" class="state-banner state-normal">
+        <span id="state-text">INITIALIZING</span>
+    </div>
+
+    <!-- Main Vitals Display -->
+    <div class="vitals-grid">
+        <div class="vital-card spo2-card">
+            <div class="vital-label">SpO2</div>
+            <div class="vital-value" id="spo2-value">--</div>
+            <div class="vital-unit">%</div>
+            <div class="vital-status" id="spo2-status"></div>
+        </div>
+
+        <div class="vital-card hr-card">
+            <div class="vital-label">Heart Rate</div>
+            <div class="vital-value" id="hr-value">--</div>
+            <div class="vital-unit">BPM</div>
+            <div class="vital-status" id="hr-status"></div>
+        </div>
+
+        <div class="vital-card avaps-card">
+            <div class="vital-label">AVAPS</div>
+            <div class="vital-value" id="avaps-status">--</div>
+            <div class="vital-detail" id="avaps-power"></div>
+        </div>
+    </div>
+
+    <!-- Status Indicators -->
+    <div class="status-grid">
+        <div class="status-item">
+            <span class="status-indicator" id="ble-indicator"></span>
+            <span class="status-label">BLE</span>
+            <span class="status-value" id="ble-status">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-indicator" id="battery-indicator"></span>
+            <span class="status-label">Battery</span>
+            <span class="status-value" id="battery-value">--%</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Last Reading</span>
+            <span class="status-value" id="last-reading">--</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Uptime</span>
+            <span class="status-value" id="uptime">--</span>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-container">
+        <div class="chart-header">
+            <h3>SpO2 Trend (Last Hour)</h3>
+            <div class="chart-controls">
+                <button class="btn btn-sm" data-range="1">1h</button>
+                <button class="btn btn-sm active" data-range="6">6h</button>
+                <button class="btn btn-sm" data-range="24">24h</button>
+            </div>
+        </div>
+        <canvas id="spo2-chart"></canvas>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <button id="test-alert-btn" class="btn btn-warning">Test Alert</button>
+        <button id="silence-btn" class="btn btn-secondary">Silence (30 min)</button>
+        <button id="unsilence-btn" class="btn btn-secondary" style="display: none;">Unsilence</button>
+    </div>
+
+    <!-- Silence Banner -->
+    <div id="silence-banner" class="silence-banner" style="display: none;">
+        Alerts silenced - <span id="silence-remaining">0</span> minutes remaining
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=10"></script>
+{% endblock %}

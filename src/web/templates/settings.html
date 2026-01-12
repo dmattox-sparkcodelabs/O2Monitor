@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <h1>Settings</h1>
+
+    <div class="settings-sections">
+        <!-- SpO2 Thresholds -->
+        <section class="settings-section">
+            <h2>SpO2 Thresholds</h2>
+            <div class="form-group">
+                <label for="spo2-alarm">Alarm Level (%)</label>
+                <input type="number" id="spo2-alarm" min="70" max="95"
+                       value="{{ config.thresholds.spo2.alarm_level if config else 90 }}">
+                <span class="help-text">Trigger alarm when SpO2 drops below this level</span>
+            </div>
+            <div class="form-group">
+                <label for="spo2-duration">Alarm Duration (seconds)</label>
+                <input type="number" id="spo2-duration" min="10" max="120"
+                       value="{{ config.thresholds.spo2.alarm_duration_seconds if config else 30 }}">
+                <span class="help-text">How long SpO2 must be below threshold before alarm</span>
+            </div>
+            <div class="form-group">
+                <label for="spo2-warning">Warning Level (%)</label>
+                <input type="number" id="spo2-warning" min="75" max="98"
+                       value="{{ config.thresholds.spo2.warning_level if config else 92 }}">
+                <span class="help-text">Log warning when SpO2 drops below this level</span>
+            </div>
+        </section>
+
+        <!-- AVAPS Thresholds -->
+        <section class="settings-section">
+            <h2>AVAPS Power Thresholds</h2>
+            <div class="form-group">
+                <label for="avaps-on">ON Threshold (Watts)</label>
+                <input type="number" id="avaps-on" min="1" max="50" step="0.5"
+                       value="{{ config.thresholds.avaps.on_watts if config else 3.0 }}">
+                <span class="help-text">Power level above which AVAPS is considered ON</span>
+            </div>
+            <div class="form-group">
+                <label for="avaps-off">OFF Threshold (Watts)</label>
+                <input type="number" id="avaps-off" min="0" max="10" step="0.5"
+                       value="{{ config.thresholds.avaps.off_watts if config else 2.0 }}">
+                <span class="help-text">Power level below which AVAPS is considered OFF</span>
+            </div>
+        </section>
+
+        <!-- Audio Settings -->
+        <section class="settings-section">
+            <h2>Local Audio Alerts</h2>
+            <div class="form-group">
+                <label for="audio-volume">Volume (%)</label>
+                <input type="range" id="audio-volume" min="0" max="100"
+                       value="{{ config.alerting.local_audio.volume if config else 90 }}">
+                <span class="volume-display" id="volume-display">90%</span>
+            </div>
+        </section>
+
+        <!-- PagerDuty Integration -->
+        <section class="settings-section">
+            <h2>PagerDuty Integration</h2>
+            <div class="integration-status">
+                <span class="status-indicator {% if config and config.alerting.pagerduty.routing_key %}connected{% else %}disconnected{% endif %}"></span>
+                <span id="pagerduty-status">
+                    {% if config and config.alerting.pagerduty.routing_key %}
+                    Configured
+                    {% else %}
+                    Not Configured
+                    {% endif %}
+                </span>
+            </div>
+            <div class="form-group">
+                <label for="pagerduty-key">Events API v2 Routing Key</label>
+                <input type="password" id="pagerduty-key" placeholder="Enter routing key">
+                <span class="help-text">Get this from PagerDuty > Service > Integrations > Events API v2</span>
+            </div>
+            <div class="form-group">
+                <a href="https://support.pagerduty.com/docs/services-and-integrations" target="_blank" class="help-link">
+                    How to set up PagerDuty
+                </a>
+            </div>
+        </section>
+
+        <!-- Healthchecks.io Integration -->
+        <section class="settings-section">
+            <h2>Healthchecks.io Integration</h2>
+            <div class="integration-status">
+                <span class="status-indicator {% if config and config.alerting.healthchecks.ping_url %}connected{% else %}disconnected{% endif %}"></span>
+                <span id="healthchecks-status">
+                    {% if config and config.alerting.healthchecks.ping_url %}
+                    Configured
+                    {% else %}
+                    Not Configured
+                    {% endif %}
+                </span>
+            </div>
+            <div class="form-group">
+                <label for="healthchecks-url">Ping URL</label>
+                <input type="url" id="healthchecks-url" placeholder="https://hc-ping.com/your-uuid">
+                <span class="help-text">Get this from Healthchecks.io > Check > Ping URL</span>
+            </div>
+            <div class="form-group">
+                <a href="https://healthchecks.io/docs/" target="_blank" class="help-link">
+                    How to set up Healthchecks.io
+                </a>
+            </div>
+        </section>
+
+        <!-- Device Configuration -->
+        <section class="settings-section">
+            <h2>Device Configuration</h2>
+            <div class="form-group">
+                <label for="plug-ip">Smart Plug IP Address</label>
+                <input type="text" id="plug-ip"
+                       value="{{ config.devices.smart_plug.ip_address if config else '' }}"
+                       placeholder="192.168.1.100">
+                <span class="help-text">IP address of Kasa KP115 smart plug</span>
+                <button class="btn btn-sm" id="discover-plugs">Discover Devices</button>
+            </div>
+            <div id="discovered-devices" class="discovered-devices" style="display: none;">
+                <!-- Populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Save Button -->
+        <div class="settings-actions">
+            <button class="btn btn-primary btn-lg" id="save-settings">Save Settings</button>
+            <span class="save-status" id="save-status"></span>
+        </div>
+
+        <!-- Note about persistence -->
+        <div class="settings-note">
+            Settings are saved to config.yaml and will persist across restarts.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

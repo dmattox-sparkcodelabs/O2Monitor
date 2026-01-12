@@ -1,0 +1,67 @@
+mock_mode: false
+devices:
+  oximeter:
+    mac_address: C8:F1:6B:56:7B:F1
+    name: Checkme O2 Max
+    read_interval_seconds: 5
+  smart_plug:
+    ip_address: 192.168.50.10
+    name: AVAPS Power Monitor
+thresholds:
+  spo2:
+    alarm_level: 90
+    alarm_duration_seconds: 30
+    warning_level: 92
+  avaps:
+    on_watts: 5.0
+    off_watts: 4.0
+  ble:
+    reconnect_alert_minutes: 3
+    max_reconnect_attempts: null
+alerting:
+  pagerduty:
+    enabled: true
+    routing_key: ${PAGERDUTY_ROUTING_KEY}
+    service_name: O2 Monitor
+  local_audio:
+    enabled: true
+    alarm_sound: sounds/alarm.wav
+    volume: 100
+    use_tts: true
+    tts_message: Medical alert. Check on Dad immediately.
+    repeat_interval_seconds: 30
+  alexa:
+    enabled: false
+    notify_me_access_code: ${ALEXA_NOTIFY_CODE}
+  healthchecks:
+    enabled: true
+    ping_url: ${HEALTHCHECKS_PING_URL}
+    interval_seconds: 60
+messages:
+  spo2_alarm: Medical alert! Oxygen level critical. Check on Dad immediately.
+  ble_disconnect: O2 monitor disconnected. Please check the device.
+  system_error: O2 monitoring system error. Requires attention.
+web:
+  host: 0.0.0.0
+  port: 5000
+  secret_key: ${FLASK_SECRET_KEY}
+  debug: false
+auth:
+  session_timeout_minutes: 30
+  max_login_attempts: 5
+  lockout_minutes: 15
+  users:
+  - username: admin
+    password_hash: $2b$12$v8/MNGQs98WZCP0TBTDGbOZp2kBRv3whuqH2maLAD/V9ZPYhRk.Cy
+    role: admin
+database:
+  path: data/history.db
+  retention:
+    readings_days: 30
+    alerts_days: 365
+    events_days: 90
+logging:
+  level: INFO
+  file: logs/o2monitor.log
+  max_size_mb: 10
+  backup_count: 5

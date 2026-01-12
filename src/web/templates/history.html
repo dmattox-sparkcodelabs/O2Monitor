@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}History - {{ app_name }}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+{% endblock %}
+
+{% block content %}
+<div class="history-page">
+    <h1>Historical Data</h1>
+
+    <!-- Date Range Selector -->
+    <div class="date-controls">
+        <div class="date-preset-buttons">
+            <button class="btn btn-sm" data-hours="6">6 Hours</button>
+            <button class="btn btn-sm active" data-hours="24">24 Hours</button>
+            <button class="btn btn-sm" data-hours="72">3 Days</button>
+            <button class="btn btn-sm" data-hours="168">7 Days</button>
+        </div>
+        <div class="date-custom">
+            <label>From: <input type="datetime-local" id="start-date"></label>
+            <label>To: <input type="datetime-local" id="end-date"></label>
+            <button class="btn btn-sm btn-primary" id="load-range">Load</button>
+        </div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">SpO2 Average</div>
+            <div class="stat-value" id="spo2-avg">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">SpO2 Min</div>
+            <div class="stat-value" id="spo2-min">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">SpO2 Max</div>
+            <div class="stat-value" id="spo2-max">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Readings</div>
+            <div class="stat-value" id="reading-count">--</div>
+        </div>
+    </div>
+
+    <!-- SpO2 Chart -->
+    <div class="chart-container">
+        <h3>SpO2 Trend</h3>
+        <canvas id="spo2-history-chart"></canvas>
+    </div>
+
+    <!-- Heart Rate Chart -->
+    <div class="chart-container">
+        <h3>Heart Rate Trend</h3>
+        <canvas id="hr-history-chart"></canvas>
+    </div>
+
+    <!-- Data Table -->
+    <div class="data-table-container">
+        <h3>Recent Readings</h3>
+        <table class="data-table" id="readings-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>SpO2</th>
+                    <th>HR</th>
+                    <th>AVAPS</th>
+                    <th>Valid</th>
+                </tr>
+            </thead>
+            <tbody id="readings-tbody">
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/history.js') }}?v=5"></script>
+{% endblock %}
