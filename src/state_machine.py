@@ -71,6 +71,7 @@ class O2MonitorStateMachine:
     AVAPS_POLL_INTERVAL = 5.0      # Seconds between AVAPS power checks
     HEARTBEAT_INTERVAL = 60.0      # Seconds between heartbeat pings
     DISCONNECT_ALERT_DELAY = 180   # Seconds before alerting on disconnect
+    CLEANUP_INTERVAL = 86400       # Seconds between database cleanups (24 hours)
 
     def __init__(
         self,
@@ -119,6 +120,9 @@ class O2MonitorStateMachine:
 
         # Heartbeat tracking
         self._last_heartbeat = datetime.min
+
+        # Database cleanup tracking
+        self._last_cleanup = datetime.min
 
         # Control
         self._running = False
@@ -262,6 +266,10 @@ class O2MonitorStateMachine:
         # Send heartbeat if needed
         if (now - self._last_heartbeat).total_seconds() >= self.HEARTBEAT_INTERVAL:
             await self._send_heartbeat()
+
+        # Run daily database cleanup if needed
+        if (now - self._last_cleanup).total_seconds() >= self.CLEANUP_INTERVAL:
+            await self._run_cleanup()
 
     def stop(self) -> None:
         """Signal shutdown."""
@@ -561,6 +569,26 @@ class O2MonitorStateMachine:
             status = "disconnected"
 
         await self.alert_manager.send_heartbeat(status)
+
+    async def _run_cleanup(self) -> None:
+        """Run daily database cleanup."""
+        self._last_cleanup = datetime.now()
+        logger.info("Running daily database cleanup")
+
+        try:
+            deleted = await self.database.cleanup_old_data(
+                readings_days=30,
+                alerts_days=365,
+                events_days=90
+            )
+            logger.info(f"Database cleanup complete: {deleted}")
+            await self.database.log_event(
+                "cleanup",
+                "Daily database cleanup completed",
+                deleted
+            )
+        except Exception as e:
+            logger.error(f"Database cleanup failed: {e}")
 
 
 # Command-line interface for testing

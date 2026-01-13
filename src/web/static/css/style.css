@@ -81,9 +81,11 @@ body {
 
 /* Container */
 .container {
+    width: 100%;
     max-width: 1200px;
     margin: 0 auto;
     padding: 1.5rem;
+    box-sizing: border-box;
 }
 
 /* Buttons */
@@ -196,11 +198,23 @@ body {
 
 /* Login Page */
 .login-page {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+.login-page .container {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem;
+}
+
+.login-page .flash-messages {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 1rem;
 }
 
 .login-container {
@@ -485,8 +499,13 @@ body {
 }
 
 /* Settings Page */
+.settings-page {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
 .settings-sections {
-    max-width: 800px;
+    max-width: 100%;
 }
 
 .settings-section {
@@ -534,12 +553,64 @@ body {
     font-size: 0.875rem;
 }
 
+/* History Page Date Controls */
+.date-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: center;
+}
+
+.date-preset-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.date-custom {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.date-custom label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.date-custom input[type="datetime-local"] {
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
 /* Stats Grid */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+@media (max-width: 600px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .date-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .date-custom {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 .stat-card {

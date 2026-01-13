@@ -130,7 +130,7 @@
 - [x] Handle graceful shutdown (signal handling)
 - [x] Test module standalone
   - [x] Verify readings come through callback
-  - [ ] Verify reconnection works after manual disconnect
+  - [x] Verify reconnection works after manual disconnect
   - [x] Verify clean shutdown
 - [x] Add `get_reader()` factory function for mock/real selection
 
@@ -210,7 +210,7 @@
   - [x] Delete readings older than 30 days
   - [x] Delete alerts older than 365 days
   - [x] Delete events older than 90 days
-- [ ] Schedule cleanup to run daily (will be done in main.py)
+- [x] Schedule cleanup to run daily (runs every 24h in state_machine.py)
 
 ---
 
@@ -815,5 +815,27 @@ Priority order for next development session:
   - Critical/High alerts repeat (tones + TTS) every 30 seconds until resolved
 - Installed libsdl2-mixer-2.0-0 for pygame audio support
 - Updated config.py, alert_evaluator.py, api.py, settings.js for new alert structure
+
+---
+
+### Session 2026-01-12 Night - Bug Fixes & Maintenance
+- **Fixed dashboard chart timezone issue:**
+  - API was using `time.daylight` to check DST, but this only indicates if DST is defined, not if it's active
+  - In January (CST, UTC-6), code was incorrectly using CDT offset (UTC-5), causing 1-hour shift
+  - Fixed to use `time.localtime().tm_gmtoff` for correct current offset
+- **Increased chart data limits:**
+  - Dashboard: 2000/8000/30000 for 1hr/6hr/24hr views
+  - History page: 200000 to support 30 days of data retention
+  - API max limit increased from 5000 to 200000
+- **Added daily database cleanup:**
+  - Runs automatically every 24 hours via state machine
+  - Deletes readings >30 days, alerts >365 days, events >90 days
+- **Fixed history page layout:**
+  - Added CSS for date controls and stats grid
+  - Fixed readings table to show newest first
+- **Fixed page centering:**
+  - Settings page now centered with max-width 900px
+  - Login page uses flex column layout for proper centering
+  - Flash messages display above login box correctly
 
 *Last Updated: 2026-01-12*

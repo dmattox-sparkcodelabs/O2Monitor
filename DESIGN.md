@@ -418,11 +418,11 @@ CREATE TABLE sessions (
 );
 ```
 
-**Data Retention:**
-- Readings: 30 days (then aggregated to hourly averages)
+**Data Retention (automated daily cleanup):**
+- Readings: 30 days
 - Alerts: 1 year
 - System events: 90 days
-- Aggregated data: Indefinite
+- Cleanup runs automatically every 24 hours via state machine
 
 ### 3.6 Authentication (`auth.py`)
 

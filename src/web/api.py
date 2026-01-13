@@ -120,7 +120,7 @@ def get_readings():
         return jsonify({'error': 'Database not available'}), 503
 
     # Parse query parameters
-    limit = min(int(request.args.get('limit', 100)), 5000)
+    limit = min(int(request.args.get('limit', 100)), 200000)
 
     # Time range - support both 'hours' and 'start'/'end' parameters
     start_str = request.args.get('start')
@@ -138,9 +138,19 @@ def get_readings():
             end_utc = datetime.fromisoformat(end_clean)
 
             # Convert UTC to local time (database stores local time)
-            # Get local timezone offset
+            # Use time.localtime() to get current UTC offset (correctly handles DST)
             import time
-            utc_offset = timedelta(seconds=-time.timezone if time.daylight == 0 else -time.altzone)
+            import calendar
+            # Get current local time's UTC offset by comparing localtime and gmtime
+            now = time.time()
+            local_time = time.localtime(now)
+            # tm_gmtoff gives seconds east of UTC (negative for west)
+            # If not available, calculate from the difference
+            if hasattr(local_time, 'tm_gmtoff'):
+                utc_offset = timedelta(seconds=local_time.tm_gmtoff)
+            else:
+                # Fallback: calculate offset from local vs UTC
+                utc_offset = timedelta(seconds=calendar.timegm(local_time) - int(now))
             start_time = start_utc + utc_offset
             end_time = end_utc + utc_offset
         except ValueError:

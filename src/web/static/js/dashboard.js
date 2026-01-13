@@ -394,8 +394,9 @@
             const startTime = new Date(endTime - chartRange * 60 * 60 * 1000);
 
             // Calculate appropriate limit based on range
-            // At ~6 readings/min, we need: 1h=360, 6h=2160, 24h=8640
-            const limit = chartRange <= 1 ? 500 : chartRange <= 6 ? 3000 : 10000;
+            // At ~17 readings/min, we need: 1h=1020, 6h=6120, 24h=24480
+            // Use generous limits to handle varying data rates
+            const limit = chartRange <= 1 ? 2000 : chartRange <= 6 ? 8000 : 30000;
 
             const params = new URLSearchParams({
                 start: startTime.toISOString(),

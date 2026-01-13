@@ -296,7 +296,7 @@
             const params = new URLSearchParams({
                 start: startTime.toISOString(),
                 end: endTime.toISOString(),
-                limit: 5000
+                limit: 200000
             });
 
             const response = await fetch('/api/readings?' + params, { credentials: 'same-origin' });
@@ -349,8 +349,8 @@
     function updateTable(readings) {
         if (!elements.readingsTbody) return;
 
-        // Show last 100 readings in reverse order (most recent first)
-        const recentReadings = readings.slice(-100).reverse();
+        // Show first 100 readings (already sorted by timestamp DESC from API)
+        const recentReadings = readings.slice(0, 100);
 
         elements.readingsTbody.innerHTML = recentReadings.map(r => {
             const time = new Date(r.timestamp);
