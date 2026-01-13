@@ -70,7 +70,6 @@ class O2MonitorStateMachine:
     EVALUATION_INTERVAL = 1.0      # Seconds between state evaluations
     AVAPS_POLL_INTERVAL = 5.0      # Seconds between AVAPS power checks
     HEARTBEAT_INTERVAL = 60.0      # Seconds between heartbeat pings
-    DISCONNECT_ALERT_DELAY = 180   # Seconds before alerting on disconnect
     CLEANUP_INTERVAL = 86400       # Seconds between database cleanups (24 hours)
 
     def __init__(
@@ -116,7 +115,6 @@ class O2MonitorStateMachine:
 
         # BLE tracking
         self._disconnect_start: Optional[datetime] = None
-        self._disconnect_alert_sent = False
         self._ever_received_reading = False  # Track if we've ever gotten data
 
         # Heartbeat tracking
@@ -396,20 +394,15 @@ class O2MonitorStateMachine:
         return MonitorState.NORMAL
 
     async def _evaluate_disconnected(self) -> MonitorState:
-        """Evaluate disconnected state and handle alerting."""
-        now = datetime.now()
+        """Evaluate disconnected state.
 
-        # Track disconnect start
+        Note: Disconnect alerting is handled by AlertEvaluator using config thresholds.
+        This just tracks state for display purposes.
+        """
+        # Track disconnect start for logging
         if self._disconnect_start is None:
-            self._disconnect_start = now
-            logger.warning("BLE disconnected")
-
-        # Check if we should alert
-        disconnect_duration = (now - self._disconnect_start).total_seconds()
-        if (disconnect_duration >= self.DISCONNECT_ALERT_DELAY and
-                not self._disconnect_alert_sent):
-            await self._trigger_disconnect_alert()
-            self._disconnect_alert_sent = True
+            self._disconnect_start = datetime.now()
+            logger.warning("BLE disconnected or readings stale")
 
         return MonitorState.DISCONNECTED
 
@@ -468,7 +461,6 @@ class O2MonitorStateMachine:
         if old_state == MonitorState.DISCONNECTED and new_state != MonitorState.DISCONNECTED:
             # Reconnected
             self._disconnect_start = None
-            self._disconnect_alert_sent = False
             logger.info("BLE reconnected")
 
         if old_state == MonitorState.ALARM and new_state != MonitorState.ALARM:
@@ -520,21 +512,6 @@ class O2MonitorStateMachine:
             f"for {duration.total_seconds() if duration else 0:.0f}s"
         )
 
-    async def _trigger_disconnect_alert(self) -> None:
-        """Trigger BLE disconnect alert."""
-        alert = Alert(
-            id=f"ble-{uuid.uuid4().hex[:8]}",
-            timestamp=datetime.now(),
-            alert_type=AlertType.DISCONNECT,
-            severity=AlertSeverity.WARNING,
-            message=self.config.messages.ble_disconnect,
-        )
-
-        await self.database.insert_alert(alert)
-        await self.alert_manager.trigger_alarm(alert)
-
-        logger.warning("BLE disconnect alert triggered")
-
     # ==================== Component Integration ====================
 
     def _on_reading(self, reading: OxiReading) -> None:
@@ -548,7 +525,6 @@ class O2MonitorStateMachine:
         # Clear disconnect tracking on valid reading
         if reading.is_valid and self._disconnect_start:
             self._disconnect_start = None
-            self._disconnect_alert_sent = False
 
         # Queue reading for storage (handled in main loop)
         # Note: Callback may be called from a different thread,
