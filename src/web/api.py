@@ -262,8 +262,8 @@ def trigger_test_alert():
         message="Test alert triggered from web dashboard",
     )
 
-    # Trigger local only (not PagerDuty)
-    run_async(g.alert_manager.trigger_local_only(alert))
+    # Trigger full alert (including PagerDuty)
+    run_async(g.alert_manager.trigger_alarm(alert))
 
     # Store in database
     if g.database:
