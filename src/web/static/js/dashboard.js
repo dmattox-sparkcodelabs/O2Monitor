@@ -44,6 +44,7 @@
 
     // State class to CSS class mapping
     const stateClasses = {
+        'initializing': 'state-initializing',
         'normal': 'state-normal',
         'therapy_active': 'state-therapy_active',
         'low_spo2_warning': 'state-low_spo2_warning',
@@ -359,6 +360,7 @@
 
         // Update text
         const stateNames = {
+            'initializing': 'INITIALIZING',
             'normal': 'NORMAL',
             'therapy_active': 'THERAPY ACTIVE',
             'low_spo2_warning': 'LOW SPO2 WARNING',

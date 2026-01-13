@@ -117,6 +117,7 @@ class O2MonitorStateMachine:
         # BLE tracking
         self._disconnect_start: Optional[datetime] = None
         self._disconnect_alert_sent = False
+        self._ever_received_reading = False  # Track if we've ever gotten data
 
         # Heartbeat tracking
         self._last_heartbeat = datetime.min
@@ -347,7 +348,14 @@ class O2MonitorStateMachine:
         Returns:
             Appropriate MonitorState based on current conditions
         """
-        # Check BLE connection first
+        # During startup (before first reading), show INITIALIZING not DISCONNECTED
+        if not self._ever_received_reading:
+            if self._current_reading and self._current_reading.is_valid:
+                self._ever_received_reading = True
+            else:
+                return MonitorState.INITIALIZING
+
+        # Check BLE connection
         if not self.ble_reader.is_connected:
             return await self._evaluate_disconnected()
 

@@ -288,6 +288,11 @@ body {
     text-transform: uppercase;
 }
 
+.state-initializing {
+    background: var(--primary-color);
+    color: white;
+}
+
 .state-normal {
     background: var(--success-color);
     color: white;
