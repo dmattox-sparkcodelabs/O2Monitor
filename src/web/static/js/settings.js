@@ -42,6 +42,8 @@
         discoveredDevices: document.getElementById('discovered-devices'),
 
         // Bluetooth & Timeouts
+        adapter1Name: document.getElementById('adapter1-name'),
+        adapter2Name: document.getElementById('adapter2-name'),
         readInterval: document.getElementById('read-interval'),
         lateReading: document.getElementById('late-reading'),
         switchTimeout: document.getElementById('switch-timeout'),
@@ -81,7 +83,7 @@
             const alertTypes = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                                'hr_high', 'hr_low', 'disconnect',
                                'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                               'battery_warning', 'battery_critical'];
+                               'battery_warning', 'battery_critical', 'adapter_disconnect'];
 
             alertTypes.forEach(alertType => {
                 const alertData = config.alerts[alertType];
@@ -126,6 +128,13 @@
 
         // Bluetooth & Timeouts
         if (config.bluetooth) {
+            // Adapter names
+            if (config.bluetooth.adapters && config.bluetooth.adapters.length > 0) {
+                setValue('adapter1Name', config.bluetooth.adapters[0]?.name);
+                if (config.bluetooth.adapters.length > 1) {
+                    setValue('adapter2Name', config.bluetooth.adapters[1]?.name);
+                }
+            }
             setValue('readInterval', config.bluetooth.read_interval_seconds);
             setValue('lateReading', config.bluetooth.late_reading_seconds);
             setValue('switchTimeout', config.bluetooth.switch_timeout_minutes);
@@ -339,6 +348,10 @@
                 }
             },
             bluetooth: {
+                adapter_names: [
+                    (elements.adapter1Name?.value || 'Adapter 1').trim(),
+                    (elements.adapter2Name?.value || 'Adapter 2').trim()
+                ],
                 read_interval_seconds: parseInt(elements.readInterval?.value || 5),
                 late_reading_seconds: parseInt(elements.lateReading?.value || 30),
                 switch_timeout_minutes: parseInt(elements.switchTimeout?.value || 5),
@@ -350,7 +363,7 @@
         const alertTypes = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                            'hr_high', 'hr_low', 'disconnect',
                            'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                           'battery_warning', 'battery_critical'];
+                           'battery_warning', 'battery_critical', 'adapter_disconnect'];
 
         alertTypes.forEach(alertType => {
             const alertData = getAlertRowData(alertType);

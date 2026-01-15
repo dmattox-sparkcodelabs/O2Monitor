@@ -382,6 +382,7 @@ def get_config():
             'no_therapy_at_night_high': _alert_to_dict(config.alerts.no_therapy_at_night_high),
             'battery_warning': _alert_to_dict(config.alerts.battery_warning),
             'battery_critical': _alert_to_dict(config.alerts.battery_critical),
+            'adapter_disconnect': _alert_to_dict(config.alerts.adapter_disconnect),
             'sleep_hours': {
                 'start': config.alerts.sleep_hours.start,
                 'end': config.alerts.sleep_hours.end,
@@ -476,7 +477,7 @@ def update_config():
         alert_types = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                        'hr_high', 'hr_low', 'disconnect',
                        'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                       'battery_warning', 'battery_critical']
+                       'battery_warning', 'battery_critical', 'adapter_disconnect']
         for alert_name in alert_types:
             if alert_name in alerts:
                 alert_config = getattr(config.alerts, alert_name)
@@ -531,6 +532,12 @@ def update_config():
     # Update bluetooth
     if 'bluetooth' in data:
         bt = data['bluetooth']
+        # Update adapter names (preserving MAC addresses)
+        if 'adapter_names' in bt and isinstance(bt['adapter_names'], list):
+            for i, name in enumerate(bt['adapter_names']):
+                if i < len(config.bluetooth.adapters):
+                    config.bluetooth.adapters[i].name = name
+                    updated.append(f'bluetooth.adapters[{i}].name')
         if 'read_interval_seconds' in bt:
             config.bluetooth.read_interval_seconds = int(bt['read_interval_seconds'])
             updated.append('bluetooth.read_interval_seconds')

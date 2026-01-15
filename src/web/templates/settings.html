@@ -216,6 +216,25 @@
                             <td><input type="checkbox" class="alert-bypass-therapy"></td>
                             <td><span class="input-with-unit"><input type="number" class="alert-resend" min="1" max="120" step="0.5" value="60"><span class="unit">m</span></span></td>
                         </tr>
+                        <tr data-alert="adapter_disconnect">
+                            <td>
+                                <strong>Adapter Disconnect</strong>
+                                <span class="alert-desc">Bluetooth adapter unplugged</span>
+                            </td>
+                            <td><input type="checkbox" class="alert-enabled" checked></td>
+                            <td><span class="na">-</span></td>
+                            <td><span class="na">-</span></td>
+                            <td>
+                                <select class="alert-severity">
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="warning" selected>Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </td>
+                            <td><span class="na">-</span></td>
+                            <td><span class="input-with-unit"><input type="number" class="alert-resend" min="1" max="120" step="0.5" value="60"><span class="unit">m</span></span></td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -240,7 +259,19 @@
         <!-- Bluetooth & Timeouts -->
         <section class="settings-section">
             <h2>Bluetooth & Timeouts</h2>
-            <p class="section-description">Configure Bluetooth adapter timing and failover behavior</p>
+            <p class="section-description">Configure Bluetooth adapters and failover behavior</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="adapter1-name">Adapter 1 Name</label>
+                    <input type="text" id="adapter1-name" placeholder="e.g., Hallway" value="Hallway">
+                    <span class="help-text">First Bluetooth adapter</span>
+                </div>
+                <div class="form-group">
+                    <label for="adapter2-name">Adapter 2 Name</label>
+                    <input type="text" id="adapter2-name" placeholder="e.g., Bedroom" value="Bedroom">
+                    <span class="help-text">Second Bluetooth adapter</span>
+                </div>
+            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label for="read-interval">Read Interval</label>
@@ -361,5 +392,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=8"></script>
 {% endblock %}

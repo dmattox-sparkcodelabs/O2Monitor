@@ -213,6 +213,11 @@ class AlertsConfig:
         enabled=True, threshold=10, duration_seconds=0,
         severity="critical", bypass_on_therapy=False
     ))
+    # Adapter disconnect - fires when a Bluetooth adapter is unplugged
+    adapter_disconnect: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
+        enabled=True, threshold=0, duration_seconds=0,
+        severity="warning", bypass_on_therapy=False, resend_interval_seconds=3600
+    ))
     # Sleep hours for no_therapy_at_night alerts
     sleep_hours: SleepHoursConfig = field(default_factory=SleepHoursConfig)
 
@@ -433,7 +438,7 @@ def _dict_to_dataclass(cls, data: Dict[str, Any]):
         alert_fields = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                         'hr_high', 'hr_low', 'disconnect',
                         'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                        'battery_warning', 'battery_critical']
+                        'battery_warning', 'battery_critical', 'adapter_disconnect']
         for alert_name in alert_fields:
             if alert_name in data and isinstance(data[alert_name], dict):
                 kwargs[alert_name] = _dict_to_dataclass(AlertItemConfig, data[alert_name])
@@ -613,6 +618,7 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
         'no_therapy_at_night_high': _save_alert_item(config.alerts.no_therapy_at_night_high),
         'battery_warning': _save_alert_item(config.alerts.battery_warning),
         'battery_critical': _save_alert_item(config.alerts.battery_critical),
+        'adapter_disconnect': _save_alert_item(config.alerts.adapter_disconnect),
         'sleep_hours': {
             'start': config.alerts.sleep_hours.start,
             'end': config.alerts.sleep_hours.end,
