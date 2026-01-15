@@ -8,7 +8,7 @@
 
 **Project:** O2 Monitoring System for OHS Patient (Proof of Concept)
 **Created:** 2026-01-11
-**Status:** Phase 10 (Enhanced Alerting) Complete with Audio/TTS
+**Status:** Phase 12 (Multi-Adapter Failover) Complete - System in Production
 
 ---
 
@@ -497,13 +497,14 @@
 
 ## Phase 8: Deployment
 
-### 8.1 systemd Service
+### 8.1 systemd Service ✅
 - [x] Create service file `o2monitor.service`
 - [x] Configure auto-restart on failure
 - [x] Configure restart delay (10 seconds)
 - [x] Set up environment (PYTHONUNBUFFERED)
 - [x] Create install script `install-service.sh`
 - [x] Install and test service
+- [x] Verified working after reboot
 
 ### 8.2 Installation Script (`install.sh`)
 - [x] Check prerequisites (Python, BlueZ, GLib, SDL2, espeak)
@@ -639,6 +640,7 @@
   - [x] Disconnect escalation times
   - [x] Battery thresholds
   - [x] No Therapy at Night (sleep hours, escalation times)
+  - [x] Resend interval per alert type
 - [x] Add therapy mode enable/disable toggles
 - [x] Update API endpoints for new config structure
   - [x] GET /api/config returns alerts config
@@ -679,50 +681,96 @@
 
 ---
 
+## Phase 12: Multi-Adapter Bluetooth Failover ✅ (NEW)
+
+### 12.1 Internal Bluetooth Disabled
+- [x] Identified "Zombie Adapter" issue (internal BT interfering with USB adapters)
+- [x] Added `dtoverlay=disable-bt` to `/boot/firmware/config.txt`
+- [x] Verified internal adapter disabled after reboot
+
+### 12.2 Dual Adapter Hardware Setup
+- [x] Selected Insignia USB Bluetooth adapters (BlueZ compatible)
+- [x] Configured Hallway adapter (on USB extension): MAC 10:A5:62:EC:E8:A5
+- [x] Configured Bedroom adapter (direct USB): MAC 10:A5:62:79:03:8A
+- [-] ASUS USB-BT500 tested but requires manual driver build (not used)
+
+### 12.3 AdapterManager Implementation
+- [x] Created `AdapterInfo` dataclass for adapter state
+- [x] Created `AdapterManager` class in `ble_reader.py`
+  - [x] `discover_adapters()` - runs hciconfig and matches to config
+  - [x] `switch_to_next_adapter()` - brings up next adapter, brings down current
+  - [x] `check_adapter_health()` - periodic availability check
+- [x] Integrated with `CheckmeO2Reader`
+  - [x] Switch after `switch_timeout_minutes` of no readings
+  - [x] Bounce every `bounce_interval_minutes` when in switching mode
+  - [x] Health check every 60 seconds
+
+### 12.4 Configuration Updates
+- [x] Added `BluetoothConfig` and `BluetoothAdapterConfig` dataclasses
+- [x] Updated `config.yaml` with bluetooth section
+- [x] Added settings fields: adapter names, read interval, late reading, switch timeout, bounce interval
+- [x] API endpoints updated to save/load bluetooth config
+
+### 12.5 Dashboard Updates
+- [x] Added dual adapter status display in status grid
+- [x] Adapter indicators: active (green), connecting (amber pulse), standby (blue), offline (gray)
+- [x] Made vitals display larger (7rem) for visibility
+- [x] Put units (%, bpm) inline with numbers
+
+### 12.6 Settings Page Updates
+- [x] Added Bluetooth & Timeouts section
+- [x] Adapter name fields (editable)
+- [x] Read interval, late reading threshold, switch timeout, bounce interval
+- [x] All settings persist to config.yaml
+
+### 12.7 Adapter Disconnect Alert
+- [x] Added `adapter_disconnect` alert type to config.py
+- [x] Added alert row in Settings page table
+- [x] Warning severity, 60-minute resend interval
+- [x] Fires when configured adapter not detected in hciconfig output
+
+---
+
 ## Immediate Next Steps
 
 Priority order for next development session:
 
-### Completed Phases (1-6)
+### Completed Phases
 - ~~**Phases 1-6**: Core infrastructure, device integration, database, alerting, state machine, web dashboard~~ [x] All Done
+- ~~**Phase 8**: Deployment - systemd service, installation scripts~~ [x] All Done
+- ~~**Phase 10**: Enhanced Alerting System with therapy-aware thresholds~~ [x] All Done
+- ~~**Phase 12**: Multi-Adapter Bluetooth Failover~~ [x] All Done
 
-### Phase 10: Enhanced Alerting System - MOSTLY COMPLETE
-
-1. ~~**Update models.py** with new alert types and severities~~ [x] Done
-2. ~~**Update config.py** with new alert config structure~~ [x] Done
-3. ~~**Create alert_evaluator.py** module~~ [x] Done
-4. ~~**Update AlertManager** to use new alert types~~ [x] Done
-5. ~~**Update state_machine.py** to use alert evaluator~~ [x] Done
-6. ~~**Update Settings page** for new alert configuration~~ [x] Done
-7. ~~**Update API endpoints** for new config structure~~ [x] Done
-
-### Remaining Phase 10 Tasks
+### Remaining Tasks
 - [ ] Update dashboard to show current therapy mode indicator
 - [ ] Unit tests for alert evaluator
-- [ ] Integration testing with hardware
-
-### Remaining Setup Tasks (User Action Needed)
-
-7. ~~**Create alarm sounds**~~ - Not needed, tones generated programmatically
-8. **Phase 8: Deployment** - systemd service, installation script
+- [ ] Simulated failure testing (unplug adapters, network errors)
+- [ ] Family training on dashboard
+- [ ] Document operational runbooks
 
 ### Completed Setup Tasks
 - [x] User account created for web dashboard
 - [x] PagerDuty configured (routing key in config.yaml)
 - [x] Healthchecks.io configured (ping URL in config.yaml)
-- [x] Kasa smart plug discovered (192.168.50.10)
-- [x] Power thresholds tuned (on: 5.0W, off: 4.0W)
+- [x] Kasa smart plug discovered (192.168.4.126)
+- [x] Power thresholds tuned (on: 25.0W, off: 20.0W for actual BiPAP)
+- [x] Internal Bluetooth disabled, dual USB adapters configured
+- [x] systemd service installed and verified working
 
 ---
 
 ## Notes
 
 - Device MAC: `C8:F1:6B:56:7B:F1`
-- Kasa Smart Plug IP: `192.168.50.10`
+- Kasa Smart Plug IP: `192.168.4.126`
 - BLE library: BLE-GATT (not bleak/bluepy)
 - Device must be "trusted" not "paired" in bluetoothctl
 - Virtual env needs `--system-site-packages` for GLib
 - Working test script: `test_working.py`
+- **Bluetooth adapters:**
+  - Internal Pi Bluetooth: DISABLED (`dtoverlay=disable-bt`)
+  - Hallway adapter: Insignia USB, MAC 10:A5:62:EC:E8:A5
+  - Bedroom adapter: Insignia USB, MAC 10:A5:62:79:03:8A
 - **vext workaround**: vext.gi blocks system packages. Had to install `cffi==1.17.1` and `cryptography==42.0.8` with `--only-binary :all:` to get prebuilt ARM wheels
 - **pip upgrade**: Upgraded pip to 25.3 (old 20.3.4 had TOML parsing bugs)
 - **BLE command 0x17**: Returns current real-time reading only (not stored data)
@@ -838,4 +886,65 @@ Priority order for next development session:
   - Login page uses flex column layout for proper centering
   - Flash messages display above login box correctly
 
-*Last Updated: 2026-01-12*
+---
+
+### Session 2026-01-13/14 - Bluetooth Adapter Issues & Multi-Adapter Failover
+
+**Problem Identified:**
+- BLE connections were failing after Pi 5 to Pi 4 migration
+- Root cause: "Zombie Adapter" problem where internal Bluetooth (hci0) was interfering with USB adapters
+- BlueZ prioritizes hci0 even when it's not the desired adapter
+
+**Solution Implemented:**
+1. **Disabled internal Bluetooth:**
+   - Added `dtoverlay=disable-bt` to `/boot/firmware/config.txt`
+   - Verified disabled after reboot
+
+2. **Selected working USB adapters:**
+   - ASUS USB-BT500 tested but requires manual driver build (kernel headers, make)
+   - Insignia USB Bluetooth adapters work out of the box with BlueZ
+   - Chose two Insignia adapters: Hallway (USB extension) and Bedroom (direct)
+
+3. **Implemented multi-adapter failover:**
+   - Created `AdapterManager` class to manage multiple adapters
+   - Automatic switching after 5 minutes of no readings
+   - "Bounce mode" cycles through adapters every 1 minute when in switching mode
+   - Health checks every 60 seconds via `hciconfig -a`
+
+4. **Dashboard updates:**
+   - Added dual adapter status display with colored indicators
+   - Active=green, Connecting=amber (pulsing), Standby=blue, Offline=gray
+   - Made vitals display larger (7rem) for dad's visibility
+   - Put units inline with numbers (96% instead of 96 / %)
+
+5. **Settings page updates:**
+   - Added Bluetooth & Timeouts section
+   - Editable adapter names
+   - Configurable timeouts: read interval, late reading, switch timeout, bounce interval
+
+6. **New alert type:**
+   - Added `adapter_disconnect` alert (warning severity)
+   - Fires when a configured Bluetooth adapter is not detected
+   - 60-minute resend interval
+
+7. **Resend intervals:**
+   - Added `resend_interval_seconds` to all alert types
+   - Prevents alert fatigue from repeated notifications
+   - Configurable per alert type in Settings
+
+**Files Modified:**
+- `src/ble_reader.py` - AdapterManager class and switching logic
+- `src/config.py` - BluetoothConfig, BluetoothAdapterConfig, adapter_disconnect alert
+- `config.yaml` - bluetooth section with adapter definitions
+- `src/web/api.py` - /api/adapters endpoint, config save/load
+- `src/web/templates/dashboard.html` - adapter status display
+- `src/web/templates/settings.html` - Bluetooth & Timeouts section
+- `src/web/static/css/style.css` - adapter indicator styles
+- `src/web/static/js/dashboard.js` - adapter status fetching
+- `src/web/static/js/settings.js` - bluetooth settings handling
+
+**Cleanup:**
+- Removed stray files: `cat`, `echo`, `on`, `New power settings:`, `test_asus.py`
+- Removed ASUS driver downloads from ~/Downloads
+
+*Last Updated: 2026-01-14*

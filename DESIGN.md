@@ -8,9 +8,9 @@
 
 ## Life-Safety Monitoring for OHS Patient (Proof of Concept)
 
-**Version:** 1.3
-**Date:** 2026-01-12
-**Status:** Implementation Complete (therapy-aware alerting system implemented)
+**Version:** 1.4
+**Date:** 2026-01-14
+**Status:** Implementation Complete (multi-adapter failover and enhanced alerting)
 
 ---
 
@@ -59,10 +59,18 @@ This document describes the design of a life-safety monitoring system for a pati
 |-----------|-------|---------|------------|
 | Central Hub | Raspberry Pi 4 (4GB) | Run monitoring software | Ethernet/WiFi |
 | Pulse Oximeter | Wellue Checkme O2 Max | SpO2 + HR readings | Bluetooth LE |
+| BT Adapter (Primary) | Insignia USB Bluetooth | BLE connection - Hallway | USB (on extension) |
+| BT Adapter (Backup) | Insignia USB Bluetooth | BLE connection - Bedroom | USB (direct) |
 | Power Monitor | TP-Link Kasa KP115 | AVAPS on/off detection | WiFi (LAN) |
 | Local Alert | Powered PC Speakers | Audible alarms | Pi 3.5mm audio jack |
 | Remote Announce | Amazon Echo devices (optional) | Multi-room alerts | WiFi (Alexa API) |
 | UPS | EcoFlow Delta 2 | Power backup | AC passthrough |
+
+**Bluetooth Adapter Notes:**
+- The Raspberry Pi 4's internal Bluetooth is disabled via `dtoverlay=disable-bt` in `/boot/firmware/config.txt`
+- Two external USB Bluetooth adapters provide redundancy and location flexibility
+- Insignia adapters are confirmed to work with BlueZ; ASUS adapters require additional drivers
+- Adapters are named "Hallway" and "Bedroom" for dashboard display
 
 ### 2.3 Software Stack
 
@@ -135,9 +143,56 @@ class OxiReading:
 - Device display does NOT need to stay on after initial connection
 
 **Reading Interval:**
-- Default: 10 seconds between readings
+- Default: 5 seconds between readings (configurable)
 - Device sends multiple notification packets per request; deduplication required
 - Use 1-second minimum gap to filter duplicate notifications
+
+### 3.1.1 Multi-Adapter Failover (AdapterManager)
+
+The system supports multiple Bluetooth adapters for redundancy and location flexibility. The `AdapterManager` class handles automatic switching between adapters when connectivity issues occur.
+
+**Key Classes:**
+```python
+@dataclass
+class AdapterInfo:
+    name: str                    # Human-readable name (e.g., "Hallway")
+    mac_address: str             # Adapter MAC address
+    hci: Optional[str] = None    # BlueZ interface (e.g., "hci0")
+    is_up: bool = False          # Current interface state
+
+class AdapterManager:
+    def discover_adapters(self) -> List[AdapterInfo]
+    def switch_to_next_adapter(self) -> Optional[AdapterInfo]
+    def check_adapter_health(self) -> Dict[str, bool]
+```
+
+**Switching Logic:**
+1. **Normal Mode**: Use the current adapter until readings stop arriving
+2. **Switch Timeout**: After `switch_timeout_minutes` (default: 5) of no readings, switch to the next adapter
+3. **Bounce Mode**: When switching, cycle through available adapters every `bounce_interval_minutes` (default: 1) until connection is restored
+4. **Health Checks**: Every 60 seconds, run `hciconfig -a` to verify adapter availability
+
+**Adapter States (Dashboard Display):**
+| State | Color | Meaning |
+|-------|-------|---------|
+| Active | Green | Currently connected and receiving readings |
+| Connecting | Amber (pulsing) | Attempting to connect |
+| Standby | Blue | Available but intentionally down (not in use) |
+| Offline | Gray | Not detected (unplugged or failed) |
+
+**Configuration:**
+```yaml
+bluetooth:
+  adapters:
+    - name: Hallway
+      mac_address: 10:A5:62:EC:E8:A5
+    - name: Bedroom
+      mac_address: 10:A5:62:79:03:8A
+  read_interval_seconds: 5
+  late_reading_seconds: 30
+  switch_timeout_minutes: 5
+  bounce_interval_minutes: 1
+```
 
 ### 3.2 AVAPS Monitor (`avaps_monitor.py`)
 
@@ -188,14 +243,20 @@ class AVAPSState(Enum):
 
 | Alert Type | Severity | Description | Therapy OFF | Therapy ON |
 |------------|----------|-------------|-------------|------------|
-| `spo2_critical` | critical | Dangerously low SpO2 | <90% for 30s | <85% for 120s |
-| `spo2_warning` | high | SpO2 entering warning zone | <92% for 60s | Disabled |
+| `spo2_critical_off_therapy` | critical | Dangerously low SpO2 (no therapy) | <90% for 30s | N/A |
+| `spo2_critical_on_therapy` | critical | Dangerously low SpO2 (during therapy) | N/A | <85% for 120s |
+| `spo2_warning` | warning | SpO2 entering warning zone | <92% for 60s | Disabled |
 | `hr_high` | high | Heart rate too high | >120 BPM for 60s | Disabled |
 | `hr_low` | high | Heart rate too low | <50 BPM for 60s | Disabled |
-| `disconnect` | escalating | Oximeter disconnected | info→warn→high | Disabled |
-| `no_therapy_at_night` | escalating | AVAPS not in use during sleep hours | info→warning | N/A |
+| `disconnect` | warning | Oximeter disconnected | 120 min threshold | Disabled |
+| `no_therapy_at_night_info` | info | Initial notice during sleep hours | 30 min | N/A |
+| `no_therapy_at_night_high` | high | Escalated alert during sleep hours | 60 min | N/A |
 | `battery_warning` | warning | Battery getting low | <25% | <25% |
-| `battery_critical` | high | Battery critically low | <10% | <10% |
+| `battery_critical` | critical | Battery critically low | <10% | <10% |
+| `adapter_disconnect` | warning | Bluetooth adapter unplugged | Always | Always |
+
+**Resend Intervals:**
+Each alert type has a configurable `resend_interval_seconds` that prevents the same alert from firing repeatedly. After an alert fires, it won't fire again until the resend interval has elapsed (even if the condition persists). This prevents alert fatigue while ensuring persistent conditions are re-notified periodically.
 
 **Sleep Hours and Therapy Compliance:**
 
@@ -293,6 +354,15 @@ class AlertConditionTracker:
     def reset_condition(self, condition_key: str)
     def duration_seconds(self, condition_key: str) -> float
     def can_fire(self, alert_type: AlertType) -> bool  # Deduplication with cooldown
+
+@dataclass
+class AlertItemConfig:
+    enabled: bool = True
+    threshold: int = 0
+    duration_seconds: int = 30
+    severity: str = "warning"
+    bypass_on_therapy: bool = False
+    resend_interval_seconds: int = 300  # Cooldown before re-alerting
 
 @dataclass
 class Alert:
@@ -1139,27 +1209,37 @@ PUT  /api/config          → Update thresholds (admin only)
 - [x] Add historical graphs
 - [x] Create settings panel
 
-### Phase 4: Hardening
+### Phase 4: Hardening ✅
 - [x] Add comprehensive error handling
 - [x] Implement graceful degradation (partial)
-- [ ] Set up systemd service for auto-start
+- [x] Set up systemd service for auto-start
 - [x] Configure log rotation
 - [ ] Security audit
 
 ### Phase 5: Testing & Deployment
-- [ ] Integration testing
+- [x] Integration testing (basic - hardware verified working)
 - [ ] Simulated failure testing
 - [ ] Family training on dashboard
-- [ ] Go-live monitoring
+- [x] Go-live monitoring (in production)
 - [ ] Document runbooks
 
-### Phase 6: Enhanced Alerting (New)
-- [ ] Implement therapy-aware alert evaluation
-- [ ] Add HR monitoring alerts (high/low)
-- [ ] Implement disconnect alert escalation
-- [ ] Add battery level alerts
-- [ ] Update config structure for new alert types
-- [ ] Update Settings page for new alert configuration
+### Phase 6: Enhanced Alerting ✅
+- [x] Implement therapy-aware alert evaluation
+- [x] Add HR monitoring alerts (high/low)
+- [x] Implement disconnect alert escalation
+- [x] Add battery level alerts
+- [x] Update config structure for new alert types
+- [x] Update Settings page for new alert configuration
+- [x] Add resend interval configuration per alert type
+
+### Phase 7: Multi-Adapter Failover ✅ (New)
+- [x] Disable internal Raspberry Pi Bluetooth
+- [x] Add support for dual USB Bluetooth adapters
+- [x] Implement AdapterManager with automatic switching
+- [x] Add adapter status display on dashboard
+- [x] Add Bluetooth & Timeouts settings section
+- [x] Implement periodic adapter health checks
+- [x] Add adapter_disconnect alert type
 
 ---
 
@@ -1588,9 +1668,96 @@ Dashboard chart data limits were adjusted based on time range:
 
 ### E.5 GitHub Repository
 
-- Repository: https://github.com/dmattox-sparkcodelabs/02Monitor
+- Repository: https://github.com/dmattox-sparkcodelabs/O2Monitor
 - `config.yaml` is gitignored (contains secrets)
 - `config.example.yaml` provides template for new installations
+
+### E.6 Bluetooth Adapter Configuration (2026-01-14)
+
+- **Internal Bluetooth disabled**: `dtoverlay=disable-bt` in `/boot/firmware/config.txt`
+- **Hallway adapter**: Insignia USB, MAC 10:A5:62:EC:E8:A5 (on USB extension cable)
+- **Bedroom adapter**: Insignia USB, MAC 10:A5:62:79:03:8A (direct connection)
+- **Kasa Smart Plug IP**: 192.168.4.126 (updated from 192.168.50.10)
+- **AVAPS thresholds tuned**: on_watts=25.0, off_watts=20.0 (actual BiPAP power draw)
+
+---
+
+---
+
+## Appendix F: Multi-Adapter Bluetooth Setup (2026-01-14)
+
+This appendix documents the Bluetooth adapter configuration for reliable multi-adapter failover.
+
+### F.1 Disabling Internal Bluetooth
+
+The Raspberry Pi 4's internal Bluetooth can interfere with external USB adapters (the "Zombie Adapter" problem). BlueZ may prioritize hci0 even when it's not the desired adapter.
+
+**Solution:** Add to `/boot/firmware/config.txt`:
+```
+dtoverlay=disable-bt
+```
+
+Reboot required after this change.
+
+### F.2 USB Bluetooth Adapter Selection
+
+**Confirmed Working:**
+- Insignia USB Bluetooth adapters (work out of the box with BlueZ)
+
+**Not Recommended:**
+- ASUS USB-BT500 (requires manual driver installation, driver build fails on ARM)
+
+### F.3 Adapter Configuration
+
+After plugging in adapters, verify with:
+```bash
+hciconfig -a
+```
+
+Example output:
+```
+hci0:   Type: Primary  Bus: USB
+        BD Address: 10:A5:62:EC:E8:A5  ACL MTU: 1021:8  SCO MTU: 64:1
+        UP RUNNING
+        ...
+
+hci1:   Type: Primary  Bus: USB
+        BD Address: 10:A5:62:79:03:8A  ACL MTU: 1021:8  SCO MTU: 64:1
+        DOWN
+        ...
+```
+
+### F.4 Configuration in config.yaml
+
+```yaml
+bluetooth:
+  adapters:
+    - name: Hallway           # Display name on dashboard
+      mac_address: 10:A5:62:EC:E8:A5
+    - name: Bedroom
+      mac_address: 10:A5:62:79:03:8A
+  read_interval_seconds: 5    # How often to poll oximeter
+  late_reading_seconds: 30    # Reading considered "late" after this
+  switch_timeout_minutes: 5   # Switch adapters after no readings for this long
+  bounce_interval_minutes: 1  # When switching, try each adapter this often
+```
+
+### F.5 Dashboard Status Indicators
+
+The dashboard displays both adapters with color-coded status:
+- **Green (Active)**: Connected and receiving readings
+- **Amber pulsing (Connecting)**: Attempting to connect
+- **Blue (Standby)**: Detected but intentionally down
+- **Gray (Offline)**: Not detected (unplugged or failed)
+
+### F.6 Adapter Switching Behavior
+
+1. System starts with first configured adapter
+2. If no readings received for `switch_timeout_minutes`, enters "switching mode"
+3. In switching mode, cycles to next adapter every `bounce_interval_minutes`
+4. Continues bouncing until connection is restored
+5. Health check runs every 60 seconds to detect unplugged adapters
+6. `adapter_disconnect` alert fires if a configured adapter is not detected
 
 ---
 
