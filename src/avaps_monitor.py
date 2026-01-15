@@ -218,7 +218,7 @@ class AVAPSMonitor:
 
             if power > self.on_threshold_watts:
                 self._current_state = AVAPSState.ON
-            elif power < self.off_threshold_watts:
+            elif power <= self.off_threshold_watts:
                 self._current_state = AVAPSState.OFF
             # else: keep current state (hysteresis)
 

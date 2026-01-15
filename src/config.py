@@ -538,18 +538,23 @@ def _validate_config(config: Config) -> None:
 
     # Validate thresholds
     if config.thresholds.spo2.alarm_level < 0 or config.thresholds.spo2.alarm_level > 100:
-        errors.append("thresholds.spo2.alarm_level must be 0-100")
+        logger.warning("thresholds.spo2.alarm_level must be 0-100, clamping to valid range")
+        config.thresholds.spo2.alarm_level = max(0, min(100, config.thresholds.spo2.alarm_level))
 
     if config.thresholds.spo2.alarm_duration_seconds < 0:
-        errors.append("thresholds.spo2.alarm_duration_seconds must be positive")
+        logger.warning("thresholds.spo2.alarm_duration_seconds must be positive, using 0")
+        config.thresholds.spo2.alarm_duration_seconds = 0
 
-    if config.thresholds.avaps.on_watts <= config.thresholds.avaps.off_watts:
-        errors.append("thresholds.avaps.on_watts must be greater than off_watts")
+    if config.thresholds.avaps.on_watts < config.thresholds.avaps.off_watts:
+        logger.warning(f"thresholds.avaps.on_watts ({config.thresholds.avaps.on_watts}) < off_watts ({config.thresholds.avaps.off_watts}), setting off_watts = on_watts")
+        config.thresholds.avaps.off_watts = config.thresholds.avaps.on_watts
 
     # Validate audio volume
     if config.alerting.local_audio.volume < 0 or config.alerting.local_audio.volume > 100:
-        errors.append("alerting.local_audio.volume must be 0-100")
+        logger.warning("alerting.local_audio.volume must be 0-100, clamping to valid range")
+        config.alerting.local_audio.volume = max(0, min(100, config.alerting.local_audio.volume))
 
+    # Only fail on critical errors (missing required hardware config when not in mock mode)
     if errors:
         raise ValueError("Configuration errors:\n  " + "\n  ".join(errors))
 
