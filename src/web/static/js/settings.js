@@ -41,6 +41,12 @@
         discoverPlugsBtn: document.getElementById('discover-plugs'),
         discoveredDevices: document.getElementById('discovered-devices'),
 
+        // Bluetooth & Timeouts
+        readInterval: document.getElementById('read-interval'),
+        lateReading: document.getElementById('late-reading'),
+        switchTimeout: document.getElementById('switch-timeout'),
+        bounceInterval: document.getElementById('bounce-interval'),
+
         // Test alert
         testAlertBtn: document.getElementById('test-alert-btn'),
 
@@ -116,6 +122,14 @@
         // Device settings
         if (config.devices && config.devices.smart_plug) {
             setValue('plugIp', config.devices.smart_plug.ip_address);
+        }
+
+        // Bluetooth & Timeouts
+        if (config.bluetooth) {
+            setValue('readInterval', config.bluetooth.read_interval_seconds);
+            setValue('lateReading', config.bluetooth.late_reading_seconds);
+            setValue('switchTimeout', config.bluetooth.switch_timeout_minutes);
+            setValue('bounceInterval', config.bluetooth.bounce_interval_minutes);
         }
     }
 
@@ -323,6 +337,12 @@
                 smart_plug: {
                     ip_address: (elements.plugIp?.value || '').trim()
                 }
+            },
+            bluetooth: {
+                read_interval_seconds: parseInt(elements.readInterval?.value || 5),
+                late_reading_seconds: parseInt(elements.lateReading?.value || 30),
+                switch_timeout_minutes: parseInt(elements.switchTimeout?.value || 5),
+                bounce_interval_minutes: parseInt(elements.bounceInterval?.value || 1)
             }
         };
 

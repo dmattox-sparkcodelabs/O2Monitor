@@ -170,6 +170,32 @@ body {
     margin-top: 0.25rem;
 }
 
+.form-row {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.form-group .input-with-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.form-group .input-with-unit input {
+    width: 80px;
+}
+
+.form-group .input-with-unit .unit {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
 /* Flash Messages */
 .flash-messages {
     margin-bottom: 1rem;

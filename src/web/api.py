@@ -418,6 +418,16 @@ def get_config():
                 'name': config.devices.smart_plug.name,
             },
         },
+        'bluetooth': {
+            'adapters': [
+                {'name': a.name, 'mac_address': a.mac_address}
+                for a in config.bluetooth.adapters
+            ],
+            'read_interval_seconds': config.bluetooth.read_interval_seconds,
+            'late_reading_seconds': config.bluetooth.late_reading_seconds,
+            'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
+            'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
+        },
     })
 
 
@@ -518,6 +528,22 @@ def update_config():
                 config.devices.smart_plug.ip_address = d['smart_plug']['ip_address']
                 updated.append('devices.smart_plug.ip_address')
 
+    # Update bluetooth
+    if 'bluetooth' in data:
+        bt = data['bluetooth']
+        if 'read_interval_seconds' in bt:
+            config.bluetooth.read_interval_seconds = int(bt['read_interval_seconds'])
+            updated.append('bluetooth.read_interval_seconds')
+        if 'late_reading_seconds' in bt:
+            config.bluetooth.late_reading_seconds = int(bt['late_reading_seconds'])
+            updated.append('bluetooth.late_reading_seconds')
+        if 'switch_timeout_minutes' in bt:
+            config.bluetooth.switch_timeout_minutes = int(bt['switch_timeout_minutes'])
+            updated.append('bluetooth.switch_timeout_minutes')
+        if 'bounce_interval_minutes' in bt:
+            config.bluetooth.bounce_interval_minutes = int(bt['bounce_interval_minutes'])
+            updated.append('bluetooth.bounce_interval_minutes')
+
     # Persist to config.yaml
     from src.config import save_config
     try:
@@ -604,11 +630,19 @@ async def _discover_plugs():
 
 # ==================== Bluetooth Adapters ====================
 
-# Adapter configuration - maps MAC addresses to names
-ADAPTER_CONFIG = {
-    '10:A5:62:EC:E8:A5': {'name': 'Hallway', 'id': 'hallway'},
-    '10:A5:62:79:03:8A': {'name': 'Bedroom', 'id': 'bedroom'},
-}
+
+def _get_adapter_config_map():
+    """Build adapter config map from config file."""
+    config = g.config
+    adapter_map = {}
+    if config and config.bluetooth and config.bluetooth.adapters:
+        for adapter in config.bluetooth.adapters:
+            if adapter.mac_address:
+                adapter_map[adapter.mac_address.upper()] = {
+                    'name': adapter.name,
+                    'id': adapter.name.lower().replace(' ', '_'),
+                }
+    return adapter_map
 
 
 @api_bp.route('/adapters')
@@ -619,6 +653,8 @@ def get_adapters():
     import re
 
     adapters = []
+    adapter_config = _get_adapter_config_map()
+    found_macs = set()
 
     try:
         # Run hciconfig to get adapter info
@@ -648,6 +684,7 @@ def get_adapters():
                     'name': 'Unknown',
                     'id': 'unknown',
                     'status': 'offline',
+                    'detected': True,
                 }
                 # Check for UP RUNNING on same line
                 if 'UP' in line:
@@ -661,10 +698,11 @@ def get_adapters():
                 if bd_match:
                     mac = bd_match.group(1).upper()
                     current_adapter['mac'] = mac
+                    found_macs.add(mac)
                     # Look up adapter name from config
-                    if mac in ADAPTER_CONFIG:
-                        current_adapter['name'] = ADAPTER_CONFIG[mac]['name']
-                        current_adapter['id'] = ADAPTER_CONFIG[mac]['id']
+                    if mac in adapter_config:
+                        current_adapter['name'] = adapter_config[mac]['name']
+                        current_adapter['id'] = adapter_config[mac]['id']
 
                 # Check UP RUNNING status on separate line
                 if 'UP RUNNING' in line:
@@ -679,39 +717,63 @@ def get_adapters():
         if current_adapter:
             adapters.append(current_adapter)
 
+        # Add configured adapters that weren't detected (unplugged)
+        for mac, info in adapter_config.items():
+            if mac not in found_macs:
+                adapters.append({
+                    'hci': None,
+                    'mac': mac,
+                    'up': False,
+                    'running': False,
+                    'name': info['name'],
+                    'id': info['id'],
+                    'status': 'offline',
+                    'detected': False,
+                })
+
         # Determine status for each adapter
         # Check if BLE reader is connected and which adapter it's using
         ble_connected = False
-        active_adapter_mac = None
+        active_adapter_name = None
+        is_switching_mode = False
 
         if g.state_machine and g.state_machine.ble_reader:
             ble_reader = g.state_machine.ble_reader
             ble_connected = ble_reader.is_connected
+            # Get current adapter name from reader
+            if hasattr(ble_reader, 'current_adapter_name'):
+                active_adapter_name = ble_reader.current_adapter_name
+            # Check if in switching mode
+            if hasattr(ble_reader, '_adapter_manager') and ble_reader._adapter_manager:
+                is_switching_mode = ble_reader._adapter_manager.is_switching_mode
 
         for adapter in adapters:
-            if not adapter['up']:
+            is_active_adapter = (adapter['name'] == active_adapter_name)
+            is_detected = adapter.get('detected', False)
+
+            if not is_detected:
+                # Adapter configured but not detected (unplugged?)
                 adapter['status'] = 'offline'
-                adapter['status_text'] = 'Offline'
-            elif ble_connected and adapter['running']:
-                # For now, mark the first running adapter as active when connected
-                # In future, we could track which adapter is actually being used
-                if active_adapter_mac is None:
-                    adapter['status'] = 'active'
-                    adapter['status_text'] = 'Connected'
-                    active_adapter_mac = adapter['mac']
-                else:
-                    adapter['status'] = 'standby'
-                    adapter['status_text'] = 'Standby'
-            elif adapter['running']:
-                adapter['status'] = 'standby'
-                adapter['status_text'] = 'Ready'
+                adapter['status_text'] = 'Not detected'
+            elif is_active_adapter and ble_connected:
+                adapter['status'] = 'active'
+                adapter['status_text'] = 'Connected'
+            elif is_active_adapter and is_switching_mode:
+                adapter['status'] = 'connecting'
+                adapter['status_text'] = 'Trying...'
+            elif is_active_adapter:
+                adapter['status'] = 'connecting'
+                adapter['status_text'] = 'Connecting...'
             else:
-                adapter['status'] = 'error'
-                adapter['status_text'] = 'Error'
+                # Not the active adapter - it's on standby (intentionally down)
+                adapter['status'] = 'standby'
+                adapter['status_text'] = 'Standby'
 
         return jsonify({
             'adapters': adapters,
             'ble_connected': ble_connected,
+            'is_switching_mode': is_switching_mode,
+            'active_adapter': active_adapter_name,
         })
 
     except subprocess.TimeoutExpired:

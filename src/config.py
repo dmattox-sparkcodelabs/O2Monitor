@@ -72,6 +72,28 @@ class BLEThresholdConfig:
 
 
 @dataclass
+class BluetoothAdapterConfig:
+    """Configuration for a single Bluetooth adapter."""
+    name: str = ""
+    mac_address: str = ""
+
+
+@dataclass
+class BluetoothConfig:
+    """Bluetooth adapter and timing configuration."""
+    # Adapter definitions
+    adapters: List[BluetoothAdapterConfig] = field(default_factory=list)
+    # How often to poll for readings (seconds)
+    read_interval_seconds: int = 5
+    # Reading is "late" after this many seconds
+    late_reading_seconds: int = 30
+    # Switch to other adapter after this many minutes of no readings
+    switch_timeout_minutes: int = 5
+    # When in switching mode, try other adapter every X minutes
+    bounce_interval_minutes: int = 1
+
+
+@dataclass
 class ThresholdsConfig:
     """Threshold configuration container (legacy - see AlertsConfig for new system)."""
     spo2: SpO2ThresholdConfig = field(default_factory=SpO2ThresholdConfig)
@@ -303,6 +325,7 @@ class Config:
     """
     mock_mode: bool = False
     devices: DevicesConfig = field(default_factory=DevicesConfig)
+    bluetooth: BluetoothConfig = field(default_factory=BluetoothConfig)
     thresholds: ThresholdsConfig = field(default_factory=ThresholdsConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     alerting: AlertingConfig = field(default_factory=AlertingConfig)
@@ -389,6 +412,13 @@ def _dict_to_dataclass(cls, data: Dict[str, Any]):
             kwargs[field_name] = [
                 _dict_to_dataclass(UserConfig, u) if isinstance(u, dict) else u
                 for u in value
+            ]
+
+        # Handle List[BluetoothAdapterConfig] special case
+        elif field_name == 'adapters' and isinstance(value, list):
+            kwargs[field_name] = [
+                _dict_to_dataclass(BluetoothAdapterConfig, a) if isinstance(a, dict) else a
+                for a in value
             ]
 
         # Handle Optional types
@@ -605,6 +635,18 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
     existing['devices'] = existing.get('devices', {})
     existing['devices']['smart_plug'] = existing['devices'].get('smart_plug', {})
     existing['devices']['smart_plug']['ip_address'] = config.devices.smart_plug.ip_address
+
+    # Save bluetooth configuration
+    existing['bluetooth'] = {
+        'adapters': [
+            {'name': a.name, 'mac_address': a.mac_address}
+            for a in config.bluetooth.adapters
+        ],
+        'read_interval_seconds': config.bluetooth.read_interval_seconds,
+        'late_reading_seconds': config.bluetooth.late_reading_seconds,
+        'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
+        'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
+    }
 
     # Write back
     with open(config_file, 'w') as f:
