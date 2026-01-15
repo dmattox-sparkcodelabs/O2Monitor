@@ -466,6 +466,11 @@ class CheckmeO2Reader:
         self._battery_level: int = 0
         self._readings: List[OxiReading] = []
 
+        # Connection health tracking
+        self._consecutive_failures: int = 0
+        self._disconnect_start_time: Optional[float] = None
+        self._last_successful_reading_time: Optional[float] = None
+
         # Adapter management
         self._adapter_manager: Optional[AdapterManager] = None
         if adapters_config:
@@ -642,6 +647,8 @@ class CheckmeO2Reader:
         self._readings = []
         self._last_reading_time = time.time()  # Initialize to now
         self._last_switch_time = 0
+        self._consecutive_failures = 0
+        self._disconnect_start_time = None
 
         # Select and activate initial adapter
         self._select_and_activate_adapter()
@@ -654,7 +661,31 @@ class CheckmeO2Reader:
             while self._running:
                 # Check if process died
                 if self._process and not self._process.is_alive():
-                    logger.warning(f"BLE worker process died, waiting {self.respawn_delay_seconds}s before restarting...")
+                    self._consecutive_failures += 1
+
+                    # Track when disconnect started
+                    if self._disconnect_start_time is None:
+                        self._disconnect_start_time = time.time()
+
+                    # Calculate disconnect duration
+                    disconnect_duration = time.time() - self._disconnect_start_time
+                    disconnect_mins = int(disconnect_duration / 60)
+                    disconnect_secs = int(disconnect_duration % 60)
+
+                    # Log with escalating severity based on consecutive failures
+                    if self._consecutive_failures == 1:
+                        logger.warning(f"BLE worker process died, waiting {self.respawn_delay_seconds}s before restarting...")
+                    elif self._consecutive_failures == 5:
+                        logger.warning(f"BLE connection issues: 5 consecutive failures over {disconnect_mins}m {disconnect_secs}s")
+                    elif self._consecutive_failures == 10:
+                        logger.error(f"BLE connection issues: 10 consecutive failures over {disconnect_mins}m {disconnect_secs}s - adapter may need reset")
+                    elif self._consecutive_failures == 20:
+                        logger.error(f"BLE connection issues: 20 consecutive failures over {disconnect_mins}m {disconnect_secs}s - check device and adapters")
+                    elif self._consecutive_failures % 20 == 0:
+                        logger.error(f"BLE connection issues: {self._consecutive_failures} consecutive failures over {disconnect_mins}m {disconnect_secs}s")
+                    else:
+                        logger.warning(f"BLE worker died (failure #{self._consecutive_failures}, outage: {disconnect_mins}m {disconnect_secs}s), waiting {self.respawn_delay_seconds}s...")
+
                     time.sleep(self.respawn_delay_seconds)
                     self._start_worker()
 
@@ -690,7 +721,11 @@ class CheckmeO2Reader:
             elif status == "connected":
                 self._connected = True
                 self._last_reading_time = time.time()
-                logger.info(f"Connected after {msg.get('attempts')} attempts")
+                # Log extra detail if recovering from failures
+                if self._consecutive_failures > 0:
+                    logger.info(f"Connected after {msg.get('attempts')} attempts (recovering from {self._consecutive_failures} failures)")
+                else:
+                    logger.info(f"Connected after {msg.get('attempts')} attempts")
             elif status == "retrying":
                 logger.debug(f"Connection attempt {msg.get('attempts')}...")
             elif status == "monitoring":
@@ -713,6 +748,22 @@ class CheckmeO2Reader:
             self._last_reading_time = time.time()
             self._battery_level = reading.battery_level
             self._readings.append(reading)
+
+            # Log recovery summary if we had failures
+            if self._consecutive_failures > 0:
+                outage_duration = 0
+                if self._disconnect_start_time:
+                    outage_duration = time.time() - self._disconnect_start_time
+                outage_mins = int(outage_duration / 60)
+                outage_secs = int(outage_duration % 60)
+                logger.info(f"CONNECTION RECOVERED: {self._consecutive_failures} failures over {outage_mins}m {outage_secs}s outage")
+
+                # Reset tracking
+                self._consecutive_failures = 0
+                self._disconnect_start_time = None
+
+            # Track last successful reading time
+            self._last_successful_reading_time = time.time()
 
             # Exit switching mode if we were in it - we got a reading!
             if self._adapter_manager and self._adapter_manager.is_switching_mode:
