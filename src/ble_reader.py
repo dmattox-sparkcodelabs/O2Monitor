@@ -250,9 +250,41 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     process environment, avoiding any state pollution from asyncio.
     """
     import signal
+    import subprocess
 
     # Ignore SIGINT in worker - parent handles shutdown
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    # Connection timeout handler
+    class ConnectionTimeout(Exception):
+        pass
+
+    def timeout_handler(signum, frame):
+        raise ConnectionTimeout("BLE connection timed out")
+
+    signal.signal(signal.SIGALRM, timeout_handler)
+
+    # --- HELPER: Force Scan on Demand ---
+    def force_device_discovery(mac):
+        """
+        Force BlueZ to find the device by scanning briefly.
+        This repopulates the BlueZ internal cache if the adapter was reset.
+        """
+        queue.put({"type": "status", "message": "scanning", "mac": mac})
+        try:
+            # Run scan for 5 seconds then kill it
+            # Using 'timeout' command to ensure it doesn't hang
+            # Select hci1 (Hallway adapter) explicitly before scanning
+            subprocess.run(
+                "timeout 5s bash -c 'echo -e \"select 10:A5:62:EC:E8:A5\\nscan on\" | bluetoothctl'",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            # Small settling time for BlueZ to process advertisements
+            time.sleep(1)
+        except Exception as e:
+            queue.put({"type": "error", "message": f"Scan failed: {e}"})
 
     try:
         import BLE_GATT
@@ -380,21 +412,40 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     # --- Main worker logic ---
     queue.put({"type": "status", "message": "connecting", "mac": mac_address})
 
-    # Create BLE connection
-    ble = BLE_GATT.Central(mac_address)
+    # Set 45-second timeout for connection (allows for scan time)
+    signal.alarm(45)
 
-    # Connect with retry
-    attempts = 0
-    while not stop_event.is_set():
+    try:
+        # Create BLE connection
+        ble = BLE_GATT.Central(mac_address)
+
+        # Connect with Retry Logic
         try:
-            attempts += 1
+            # Attempt 1: Direct Connect (Optimistic)
             ble.connect()
-            queue.put({"type": "status", "message": "connected", "attempts": attempts})
-            break
-        except Exception as e:
-            if attempts % 10 == 0:
-                queue.put({"type": "status", "message": "retrying", "attempts": attempts})
-            time.sleep(2)
+        except Exception:
+            # Attempt 2: Scan first, then Connect
+            # This fixes the "Device Not Found" error if cache was wiped
+            queue.put({"type": "status", "message": "retrying_with_scan"})
+            
+            # Reset alarm temporarily so we don't timeout during scan
+            signal.alarm(0)
+            force_device_discovery(mac_address)
+            signal.alarm(45)  # Re-arm alarm
+            
+            ble.connect()
+
+        queue.put({"type": "status", "message": "connected", "attempts": 1})
+
+    except ConnectionTimeout:
+        queue.put({"type": "error", "message": "Connection timed out after 45s"})
+        return
+    except Exception as e:
+        queue.put({"type": "error", "message": str(e)})
+        return
+    finally:
+        # Cancel the alarm
+        signal.alarm(0)
 
     if stop_event.is_set():
         return
@@ -444,7 +495,6 @@ class CheckmeO2Reader:
         switch_timeout_minutes: int = 5,
         bounce_interval_minutes: int = 1,
         respawn_delay_seconds: int = 15,
-        bt_restart_threshold_minutes: int = 5,
     ):
         self.mac_address = mac_address
         self.callback = callback
@@ -453,7 +503,6 @@ class CheckmeO2Reader:
         self.switch_timeout_seconds = switch_timeout_minutes * 60
         self.bounce_interval_seconds = bounce_interval_minutes * 60
         self.respawn_delay_seconds = respawn_delay_seconds
-        self.bt_restart_threshold_seconds = bt_restart_threshold_minutes * 60
 
         # Process management
         self._process: Optional[mp.Process] = None
@@ -472,7 +521,6 @@ class CheckmeO2Reader:
         self._consecutive_failures: int = 0
         self._disconnect_start_time: Optional[float] = None
         self._last_successful_reading_time: Optional[float] = None
-        self._last_bt_restart_time: float = 0
 
         # Adapter management
         self._adapter_manager: Optional[AdapterManager] = None
@@ -490,6 +538,23 @@ class CheckmeO2Reader:
 
         logger.info(f"CheckmeO2Reader initialized (MAC: {mac_address}, multiprocessing mode, "
                     f"adapters: {len(adapters_config) if adapters_config else 0})")
+
+    def _get_backoff_delay(self) -> int:
+        """Calculate exponential backoff delay based on consecutive failures.
+
+        Returns delay in seconds:
+        - Attempt 1: 5s
+        - Attempt 2: 15s
+        - Attempt 3: 30s
+        - Attempt 4: 60s
+        - Attempt 5+: 60s (max)
+
+        This prevents overwhelming flaky BLE peripherals that need time to recover.
+        """
+        backoff_schedule = [5, 15, 30, 60]
+        index = min(self._consecutive_failures - 1, len(backoff_schedule) - 1)
+        index = max(0, index)  # Ensure non-negative
+        return backoff_schedule[index]
 
     @property
     def is_connected(self) -> bool:
@@ -526,12 +591,19 @@ class CheckmeO2Reader:
                         break
 
             if adapter and adapter.hci:
-                if self._adapter_manager.activate_adapter(adapter):
+                # OPTIMIZATION: Check if already UP before touching it.
+                # Resetting the adapter (down/up) wipes the BlueZ cache and can cause
+                # "Device not found" errors and USB instability.
+                if adapter.is_up:
+                    logger.info(f"Adapter {adapter.name} is already UP. Using existing state.")
                     self._current_adapter_name = adapter.name
-                    logger.info(f"Using adapter: {adapter.name} ({adapter.mac_address})")
                 else:
-                    logger.error(f"Failed to activate adapter {adapter.name}")
-                    self._current_adapter_name = "default"
+                    if self._adapter_manager.activate_adapter(adapter):
+                        self._current_adapter_name = adapter.name
+                        logger.info(f"Using adapter: {adapter.name} ({adapter.mac_address})")
+                    else:
+                        logger.error(f"Failed to activate adapter {adapter.name}")
+                        self._current_adapter_name = "default"
             else:
                 logger.warning("No adapters available, using system default")
                 self._current_adapter_name = "default"
@@ -608,65 +680,6 @@ class CheckmeO2Reader:
         # Start new worker
         self._start_worker()
 
-    def _clear_ghost_connection(self) -> bool:
-        """Remove device from BlueZ cache to clear ghost connection state.
-
-        When BLE connection drops dirty (no disconnect packet), BlueZ may still
-        think the device is connected and filter out its advertisements.
-        Removing the device forces BlueZ to forget this stale state.
-
-        Returns:
-            True if removal was successful
-        """
-        try:
-            logger.info(f"Clearing ghost connection state for {self.mac_address}...")
-            result = subprocess.run(
-                ['bluetoothctl', 'remove', self.mac_address],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            if result.returncode == 0 or 'not available' in result.stdout.lower():
-                logger.info("Device removed from BlueZ cache")
-                time.sleep(2)  # Give BlueZ time to propagate
-                return True
-            else:
-                logger.warning(f"bluetoothctl remove returned: {result.stdout} {result.stderr}")
-                return False
-        except Exception as e:
-            logger.warning(f"Error clearing ghost connection: {e}")
-            return False
-
-    def _restart_bluetooth_service(self) -> bool:
-        """Restart the Bluetooth service to clear stale state.
-
-        Returns:
-            True if restart was successful
-        """
-        try:
-            # First try the surgical approach - remove the device
-            self._clear_ghost_connection()
-
-            logger.warning("Restarting Bluetooth service to clear stale state...")
-            result = subprocess.run(
-                ['sudo', 'systemctl', 'restart', 'bluetooth'],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            if result.returncode == 0:
-                logger.info("Bluetooth service restarted successfully")
-                self._last_bt_restart_time = time.time()
-                # Give the service time to fully initialize
-                time.sleep(3)
-                return True
-            else:
-                logger.error(f"Failed to restart Bluetooth service: {result.stderr}")
-                return False
-        except Exception as e:
-            logger.error(f"Error restarting Bluetooth service: {e}")
-            return False
-
     def _start_worker(self):
         """Start the BLE worker process."""
         self._queue = self._mp_context.Queue()
@@ -734,15 +747,14 @@ class CheckmeO2Reader:
                     disconnect_mins = int(disconnect_duration / 60)
                     disconnect_secs = int(disconnect_duration % 60)
 
+                    # Calculate exponential backoff delay
+                    backoff_delay = self._get_backoff_delay()
+
                     # Log with escalating severity based on consecutive failures
                     if self._consecutive_failures == 1:
-                        logger.warning(f"BLE worker process died, waiting {self.respawn_delay_seconds}s before restarting...")
-                    elif self._consecutive_failures == 3:
-                        # Try clearing ghost connection state early (surgical fix)
-                        logger.warning(f"BLE connection issues: 3 consecutive failures, clearing ghost connection state...")
-                        self._clear_ghost_connection()
+                        logger.warning(f"BLE worker process died, waiting {backoff_delay}s before restarting...")
                     elif self._consecutive_failures == 5:
-                        logger.warning(f"BLE connection issues: 5 consecutive failures over {disconnect_mins}m {disconnect_secs}s")
+                        logger.warning(f"BLE connection issues: 5 consecutive failures over {disconnect_mins}m {disconnect_secs}s, backing off to {backoff_delay}s")
                     elif self._consecutive_failures == 10:
                         logger.error(f"BLE connection issues: 10 consecutive failures over {disconnect_mins}m {disconnect_secs}s - adapter may need reset")
                     elif self._consecutive_failures == 20:
@@ -750,19 +762,9 @@ class CheckmeO2Reader:
                     elif self._consecutive_failures % 20 == 0:
                         logger.error(f"BLE connection issues: {self._consecutive_failures} consecutive failures over {disconnect_mins}m {disconnect_secs}s")
                     else:
-                        logger.warning(f"BLE worker died (failure #{self._consecutive_failures}, outage: {disconnect_mins}m {disconnect_secs}s), waiting {self.respawn_delay_seconds}s...")
+                        logger.warning(f"BLE worker died (failure #{self._consecutive_failures}, outage: {disconnect_mins}m {disconnect_secs}s), waiting {backoff_delay}s...")
 
-                    # Check if we should restart Bluetooth service
-                    if self.bt_restart_threshold_seconds > 0:
-                        time_since_last_bt_restart = time.time() - self._last_bt_restart_time
-                        if (disconnect_duration >= self.bt_restart_threshold_seconds and
-                                time_since_last_bt_restart >= self.bt_restart_threshold_seconds):
-                            logger.warning(f"Disconnect duration ({disconnect_mins}m {disconnect_secs}s) exceeded threshold, restarting Bluetooth service...")
-                            self._restart_bluetooth_service()
-                            # Re-discover and activate adapters after BT restart
-                            self._select_and_activate_adapter()
-
-                    time.sleep(self.respawn_delay_seconds)
+                    time.sleep(backoff_delay)
                     self._start_worker()
 
                 try:
@@ -802,8 +804,10 @@ class CheckmeO2Reader:
                     logger.info(f"Connected after {msg.get('attempts')} attempts (recovering from {self._consecutive_failures} failures)")
                 else:
                     logger.info(f"Connected after {msg.get('attempts')} attempts")
-            elif status == "retrying":
-                logger.debug(f"Connection attempt {msg.get('attempts')}...")
+            elif status == "retrying_with_scan":
+                logger.debug(f"Direct connection failed, forcing scan to repopulate cache...")
+            elif status == "scanning":
+                logger.debug("Scanning for device...")
             elif status == "monitoring":
                 logger.info("Monitoring (readings: infinite)...")
             elif status == "stopped":
@@ -901,7 +905,6 @@ def get_reader(config, callback=None, error_callback=None):
         switch_timeout = config.bluetooth.switch_timeout_minutes if hasattr(config, 'bluetooth') else 5
         bounce_interval = config.bluetooth.bounce_interval_minutes if hasattr(config, 'bluetooth') else 1
         respawn_delay = config.bluetooth.respawn_delay_seconds if hasattr(config, 'bluetooth') else 15
-        bt_restart_threshold = config.bluetooth.bt_restart_threshold_minutes if hasattr(config, 'bluetooth') else 5
 
         logger.info(f"Using CheckmeO2Reader (multiprocessing mode, {len(adapters_config) if adapters_config else 0} adapters)")
         return CheckmeO2Reader(
@@ -913,5 +916,4 @@ def get_reader(config, callback=None, error_callback=None):
             switch_timeout_minutes=switch_timeout,
             bounce_interval_minutes=bounce_interval,
             respawn_delay_seconds=respawn_delay,
-            bt_restart_threshold_minutes=bt_restart_threshold,
         )

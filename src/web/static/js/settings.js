@@ -24,7 +24,7 @@
 
         // AVAPS thresholds
         avapsOn: document.getElementById('avaps-on'),
-        avapsOff: document.getElementById('avaps-off'),
+        avapsWindow: document.getElementById('avaps-window'),
 
         // Audio
         audioVolume: document.getElementById('audio-volume'),
@@ -101,7 +101,7 @@
         // AVAPS thresholds
         if (config.thresholds && config.thresholds.avaps) {
             setValue('avapsOn', config.thresholds.avaps.on_watts);
-            setValue('avapsOff', config.thresholds.avaps.off_watts);
+            setValue('avapsWindow', config.thresholds.avaps.window_minutes);
         }
 
         // Audio settings
@@ -355,8 +355,8 @@
             alerts: {},
             thresholds: {
                 avaps: {
-                    on_watts: parseFloat(elements.avapsOn?.value || 5.0),
-                    off_watts: parseFloat(elements.avapsOff?.value || 4.0)
+                    on_watts: parseFloat(elements.avapsOn?.value || 30.0),
+                    window_minutes: parseInt(elements.avapsWindow?.value || 5)
                 }
             },
             alerting: {

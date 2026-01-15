@@ -436,11 +436,14 @@
                 ? r.power_watts.toFixed(1) + 'W'
                 : '--';
 
+            const spo2Display = r.spo2 !== null && r.spo2 !== undefined ? `${r.spo2}%` : '--';
+            const hrDisplay = r.heart_rate !== null && r.heart_rate !== undefined ? `${r.heart_rate} BPM` : '--';
+
             return `
                 <tr>
                     <td>${formatTime(time)}</td>
-                    <td ${spo2Class}>${r.spo2}%</td>
-                    <td>${r.heart_rate} BPM</td>
+                    <td ${spo2Class}>${spo2Display}</td>
+                    <td>${hrDisplay}</td>
                     <td>${r.avaps_state === 'on' ? 'ON' : 'OFF'}</td>
                     <td>${powerDisplay}</td>
                     <td>${r.is_valid ? 'Yes' : 'No'}</td>

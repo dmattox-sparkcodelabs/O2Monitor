@@ -60,8 +60,8 @@ class SpO2ThresholdConfig:
 @dataclass
 class AVAPSThresholdConfig:
     """AVAPS power thresholds."""
-    on_watts: float = 3.0
-    off_watts: float = 2.0
+    on_watts: float = 30.0
+    window_minutes: int = 5
 
 
 @dataclass
@@ -549,9 +549,9 @@ def _validate_config(config: Config) -> None:
         logger.warning("thresholds.spo2.alarm_duration_seconds must be positive, using 0")
         config.thresholds.spo2.alarm_duration_seconds = 0
 
-    if config.thresholds.avaps.on_watts < config.thresholds.avaps.off_watts:
-        logger.warning(f"thresholds.avaps.on_watts ({config.thresholds.avaps.on_watts}) < off_watts ({config.thresholds.avaps.off_watts}), setting off_watts = on_watts")
-        config.thresholds.avaps.off_watts = config.thresholds.avaps.on_watts
+    if config.thresholds.avaps.window_minutes < 1:
+        logger.warning("thresholds.avaps.window_minutes must be at least 1, using 1")
+        config.thresholds.avaps.window_minutes = 1
 
     # Validate audio volume
     if config.alerting.local_audio.volume < 0 or config.alerting.local_audio.volume > 100:
@@ -602,7 +602,7 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
     }
     existing['thresholds']['avaps'] = {
         'on_watts': config.thresholds.avaps.on_watts,
-        'off_watts': config.thresholds.avaps.off_watts,
+        'window_minutes': config.thresholds.avaps.window_minutes,
     }
 
     # Save alerts configuration (unified format)

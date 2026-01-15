@@ -288,30 +288,26 @@ class MockAVAPSMonitor:
 
     Attributes:
         plug_ip: Simulated plug IP (not used)
-        on_threshold_watts: Power threshold for "on" state
-        off_threshold_watts: Power threshold for "off" state
+        on_threshold_watts: Power threshold for "on" state (in 5-min window)
     """
 
     # Simulated power readings
-    POWER_OFF = 0.8    # Watts when AVAPS is off/standby
-    POWER_ON = 15.0    # Watts when AVAPS is running
+    POWER_OFF = 15.0   # Watts when AVAPS is off/standby
+    POWER_ON = 40.0    # Watts when AVAPS is running
 
     def __init__(
         self,
         plug_ip: str = "0.0.0.0",
-        on_threshold_watts: float = 3.0,
-        off_threshold_watts: float = 2.0,
+        on_threshold_watts: float = 30.0,
     ):
         """Initialize mock AVAPS monitor.
 
         Args:
             plug_ip: IP address (for logging, not used)
             on_threshold_watts: Power level indicating AVAPS on
-            off_threshold_watts: Power level indicating AVAPS off
         """
         self.plug_ip = plug_ip
         self.on_threshold_watts = on_threshold_watts
-        self.off_threshold_watts = off_threshold_watts
 
         # Simulation state
         self._is_on = False
@@ -329,10 +325,8 @@ class MockAVAPSMonitor:
         power = self._get_power()
         if power > self.on_threshold_watts:
             return AVAPSState.ON
-        elif power < self.off_threshold_watts:
-            return AVAPSState.OFF
         else:
-            return AVAPSState.UNKNOWN
+            return AVAPSState.OFF
 
     async def get_power_watts(self) -> float:
         """Get simulated power reading.
@@ -370,10 +364,8 @@ class MockAVAPSMonitor:
             power = await self.get_power_watts()
             if power > self.on_threshold_watts:
                 return AVAPSState.ON
-            elif power < self.off_threshold_watts:
-                return AVAPSState.OFF
             else:
-                return AVAPSState.UNKNOWN
+                return AVAPSState.OFF
         except ConnectionError:
             return AVAPSState.UNKNOWN
 

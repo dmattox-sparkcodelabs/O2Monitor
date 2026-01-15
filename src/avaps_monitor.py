@@ -55,14 +55,13 @@ class AVAPSMonitor:
 
     Attributes:
         plug_ip: IP address of the Kasa smart plug
-        on_threshold_watts: Power level above which AVAPS is considered ON
-        off_threshold_watts: Power level below which AVAPS is considered OFF
+        on_threshold_watts: Power level above which AVAPS is considered ON (in 5min window)
         current_state: Current AVAPS state based on last reading
     """
 
-    # Default thresholds (can be overridden in config)
-    DEFAULT_ON_THRESHOLD = 3.0   # Watts - AVAPS running
-    DEFAULT_OFF_THRESHOLD = 2.0  # Watts - AVAPS off/standby
+    # Default threshold (can be overridden in config)
+    DEFAULT_ON_THRESHOLD = 30.0   # Watts - AVAPS running therapy
+    DEFAULT_WINDOW_MINUTES = 5    # Minutes - lookback window for max power
 
     # Cache duration to avoid hammering the plug
     CACHE_DURATION_SECONDS = 2.0
@@ -71,18 +70,18 @@ class AVAPSMonitor:
         self,
         plug_ip: str,
         on_threshold_watts: float = DEFAULT_ON_THRESHOLD,
-        off_threshold_watts: float = DEFAULT_OFF_THRESHOLD,
+        window_minutes: int = DEFAULT_WINDOW_MINUTES,
     ):
         """Initialize AVAPS monitor.
 
         Args:
             plug_ip: IP address of the Kasa KP115 smart plug
-            on_threshold_watts: Power threshold for ON state (default 3.0W)
-            off_threshold_watts: Power threshold for OFF state (default 2.0W)
+            on_threshold_watts: Power threshold for ON state (default 30W)
+            window_minutes: Lookback window in minutes (default 5)
         """
         self.plug_ip = plug_ip
         self.on_threshold_watts = on_threshold_watts
-        self.off_threshold_watts = off_threshold_watts
+        self.window_seconds = window_minutes * 60
 
         # Kasa device
         self._plug: Optional[SmartPlug] = None
@@ -95,9 +94,13 @@ class AVAPSMonitor:
         self._last_error: Optional[str] = None
         self._consecutive_errors: int = 0
 
+        # Power history for windowed state detection
+        # List of (timestamp, power_watts) tuples
+        self._power_history: list = []
+
         logger.info(
             f"AVAPSMonitor initialized (IP: {plug_ip}, "
-            f"on>{on_threshold_watts}W, off<{off_threshold_watts}W)"
+            f"on>{on_threshold_watts}W in {window_minutes}min window)"
         )
 
     @property
@@ -109,6 +112,11 @@ class AVAPSMonitor:
     def last_power(self) -> Optional[float]:
         """Last power reading in watts, or None if never read."""
         return self._last_power
+
+    @property
+    def max_power_in_window(self) -> Optional[float]:
+        """Max power in the last 5-minute window, or None if no data."""
+        return self._get_max_power_in_window()
 
     @property
     def last_error(self) -> Optional[str]:
@@ -181,6 +189,13 @@ class AVAPSMonitor:
             self._last_read_time = now
             self._last_error = None
 
+            # Add to power history for windowed state detection
+            self._power_history.append((now, power))
+
+            # Prune old entries (keep only last window_seconds)
+            cutoff = now - self.window_seconds
+            self._power_history = [(t, p) for t, p in self._power_history if t > cutoff]
+
             logger.debug(f"Power reading: {power:.2f}W")
             return power
 
@@ -202,25 +217,43 @@ class AVAPSMonitor:
         power = await self.get_power_watts()
         return power > self.on_threshold_watts
 
+    def _get_max_power_in_window(self) -> Optional[float]:
+        """Get max power reading in the configured window.
+
+        Returns:
+            Max power in watts, or None if no readings in window
+        """
+        if not self._power_history:
+            return None
+        return max(p for _, p in self._power_history)
+
     async def get_state(self) -> AVAPSState:
         """Get current AVAPS state.
 
-        Uses hysteresis to prevent oscillation at threshold boundaries:
-        - ON: power > on_threshold (3W default)
-        - OFF: power < off_threshold (2W default)
-        - UNKNOWN: power in between, or on error
+        Simple windowed logic:
+        - ON: max power in last 5 min > on_threshold (therapy active)
+        - OFF: max power in last 5 min <= on_threshold (standby)
+        - UNKNOWN: on connection error
+
+        This handles power oscillation from breathing cycles.
 
         Returns:
             AVAPSState enum value
         """
         try:
-            power = await self.get_power_watts()
+            # Get fresh reading (also updates history)
+            await self.get_power_watts()
 
-            if power > self.on_threshold_watts:
-                self._current_state = AVAPSState.ON
-            elif power <= self.off_threshold_watts:
+            # Use max power in window for state determination
+            max_power = self._get_max_power_in_window()
+
+            if max_power is None:
+                # No data yet, but not an error - assume OFF
                 self._current_state = AVAPSState.OFF
-            # else: keep current state (hysteresis)
+            elif max_power > self.on_threshold_watts:
+                self._current_state = AVAPSState.ON
+            else:
+                self._current_state = AVAPSState.OFF
 
             return self._current_state
 
@@ -308,14 +341,13 @@ def get_monitor(config, use_mock: Optional[bool] = None):
         return MockAVAPSMonitor(
             plug_ip=config.devices.smart_plug.ip_address,
             on_threshold_watts=config.thresholds.avaps.on_watts,
-            off_threshold_watts=config.thresholds.avaps.off_watts,
         )
     else:
         logger.info("Using AVAPSMonitor (real hardware)")
         return AVAPSMonitor(
             plug_ip=config.devices.smart_plug.ip_address,
             on_threshold_watts=config.thresholds.avaps.on_watts,
-            off_threshold_watts=config.thresholds.avaps.off_watts,
+            window_minutes=config.thresholds.avaps.window_minutes,
         )
 
 

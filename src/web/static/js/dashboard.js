@@ -494,18 +494,23 @@
             const isOn = data.avaps.state === 'on';
             elements.avapsStatus.textContent = isOn ? 'ON' : 'OFF';
             elements.avapsStatus.style.color = isOn ? '#4CAF50' : '#9E9E9E';
-            if (data.avaps.power_watts !== null) {
+            if (data.avaps.power_watts !== null && data.avaps.power_watts !== undefined) {
                 elements.avapsPower.textContent = data.avaps.power_watts.toFixed(1) + 'W';
+            } else {
+                elements.avapsPower.textContent = '--';
             }
         }
 
         // BLE status - now handled by adapter cards
         if (data.ble) {
             // Battery
-            if (data.ble.battery_level !== null) {
+            if (data.ble.battery_level !== null && data.ble.battery_level !== undefined) {
                 elements.batteryValue.textContent = data.ble.battery_level + '%';
                 elements.batteryIndicator.className = 'status-indicator ' +
                     (data.ble.battery_level > 20 ? 'connected' : 'disconnected');
+            } else {
+                elements.batteryValue.textContent = '--';
+                elements.batteryIndicator.className = 'status-indicator disconnected';
             }
 
             // Last reading time
