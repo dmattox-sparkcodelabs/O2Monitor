@@ -17,6 +17,7 @@
     let spo2Chart = null;
     let updateInterval = null;
     let chartRange = 6; // hours
+    let therapyPeriods = []; // Store therapy periods for chart shading
 
     // DOM Elements
     const elements = {
@@ -125,6 +126,43 @@
         }
     };
 
+    // Plugin to draw therapy periods as background shading
+    const therapyZonesPlugin = {
+        id: 'therapyZones',
+        beforeDraw: function(chart) {
+            if (!therapyPeriods || therapyPeriods.length === 0) return;
+
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            const xScale = chart.scales.x;
+
+            if (!chartArea) return;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(76, 175, 80, 0.15)'; // Light green for therapy
+
+            therapyPeriods.forEach(period => {
+                const startX = xScale.getPixelForValue(period.start);
+                const endX = xScale.getPixelForValue(period.end);
+
+                // Only draw if within chart area
+                if (endX >= chartArea.left && startX <= chartArea.right) {
+                    const drawStart = Math.max(startX, chartArea.left);
+                    const drawEnd = Math.min(endX, chartArea.right);
+
+                    ctx.fillRect(
+                        drawStart,
+                        chartArea.top,
+                        drawEnd - drawStart,
+                        chartArea.bottom - chartArea.top
+                    );
+                }
+            });
+
+            ctx.restore();
+        }
+    };
+
     // Initialize the SpO2 chart
     function initChart() {
         const ctx = document.getElementById('spo2-chart');
@@ -180,8 +218,43 @@
                     mode: 'index'
                 }
             },
-            plugins: [thresholdZonesPlugin]
+            plugins: [therapyZonesPlugin, thresholdZonesPlugin]
         });
+    }
+
+    // Extract therapy periods from readings data
+    function extractTherapyPeriods(readings) {
+        const periods = [];
+        let currentPeriod = null;
+
+        // Readings come in reverse chronological order, so reverse for processing
+        const sorted = [...readings].sort((a, b) =>
+            new Date(a.timestamp) - new Date(b.timestamp)
+        );
+
+        sorted.forEach(r => {
+            const isTherapy = r.avaps_state === 'on';
+            const time = new Date(r.timestamp);
+
+            if (isTherapy && !currentPeriod) {
+                // Start new therapy period
+                currentPeriod = { start: time, end: time };
+            } else if (isTherapy && currentPeriod) {
+                // Extend current period
+                currentPeriod.end = time;
+            } else if (!isTherapy && currentPeriod) {
+                // End therapy period
+                periods.push(currentPeriod);
+                currentPeriod = null;
+            }
+        });
+
+        // Don't forget ongoing period
+        if (currentPeriod) {
+            periods.push(currentPeriod);
+        }
+
+        return periods;
     }
 
     // Set up event listeners
@@ -398,6 +471,9 @@
             const data = await response.json();
 
             if (spo2Chart && data.readings) {
+                // Extract therapy periods for chart shading
+                therapyPeriods = extractTherapyPeriods(data.readings);
+
                 spo2Chart.data.datasets[0].data = data.readings.map(r => ({
                     x: new Date(r.timestamp),
                     y: r.spo2
