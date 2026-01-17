@@ -38,8 +38,10 @@ credentials.json
 # Claude Code
 .claude/
 
-# Claude Code memory
-CLAUDE.md
+# Secrets (credentials, API keys) - NEVER commit
+.secrets.md
+
+# Local config (may contain sensitive settings)
 config.yaml
 
 # Acknowledgment file (each user must create their own)
