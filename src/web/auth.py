@@ -20,6 +20,7 @@ Usage:
         return "Secret content"
 """
 
+import asyncio
 import functools
 import logging
 import secrets
@@ -29,7 +30,7 @@ from typing import Dict, Optional, Tuple
 
 import bcrypt
 from flask import (
-    Blueprint, current_app, flash, g, redirect,
+    Blueprint, current_app, flash, g, jsonify, redirect,
     render_template, request, session, url_for
 )
 
@@ -228,6 +229,231 @@ def logout():
     logger.info(f"User '{username}' logged out")
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.login'))
+
+
+# ==================== API Token Authentication ====================
+
+def _run_async(coro):
+    """Run async coroutine from sync Flask context."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    task = loop.create_task(coro)
+    return loop.run_until_complete(task)
+
+
+def api_login_required(f):
+    """Decorator for API endpoints that accepts both session and token auth.
+
+    Checks for authentication in this order:
+    1. Session-based auth (user in session)
+    2. Bearer token in Authorization header
+
+    Sets g.api_user to the authenticated username.
+    """
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        # Try session auth first
+        if 'user' in session:
+            g.api_user = session['user']
+            return f(*args, **kwargs)
+
+        # Try token auth
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+
+            if g.database:
+                try:
+                    token_data = _run_async(g.database.get_api_token(token))
+                    if token_data:
+                        # Update last used timestamp (fire and forget)
+                        try:
+                            _run_async(g.database.update_token_last_used(token))
+                        except Exception:
+                            pass
+
+                        g.api_user = token_data['username']
+                        return f(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"Token validation error: {e}")
+
+        # No valid auth found
+        return jsonify({'error': 'Authentication required'}), 401
+
+    return decorated
+
+
+def generate_api_token() -> str:
+    """Generate a secure random API token.
+
+    Returns:
+        64-character hex token
+    """
+    return secrets.token_hex(32)
+
+
+@auth_bp.route('/api/login', methods=['POST'])
+def api_login():
+    """API login endpoint that returns a long-lived token.
+
+    Request body (JSON):
+        {
+            "username": "admin",
+            "password": "yourpassword",
+            "device_name": "Android App"  // optional
+        }
+
+    Returns:
+        JSON with:
+        - success: bool
+        - token: str (64-char hex token, valid for 30 days)
+        - expires_at: str (ISO timestamp)
+        - username: str
+
+    Errors:
+        - 400: Missing credentials
+        - 401: Invalid credentials
+        - 429: Rate limited
+        - 503: Database not available
+    """
+    client_ip = request.remote_addr
+
+    # Accept JSON or form data
+    if request.is_json:
+        data = request.get_json()
+        username = data.get('username', '').strip() if data else ''
+        password = data.get('password', '') if data else ''
+        device_name = data.get('device_name') if data else None
+    else:
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        device_name = request.form.get('device_name')
+
+    if not username or not password:
+        return jsonify({
+            'success': False,
+            'error': 'Username and password required'
+        }), 400
+
+    # Check rate limiting
+    config = g.config
+    max_attempts = config.auth.max_login_attempts if config else 5
+    lockout_minutes = config.auth.lockout_minutes if config else 15
+
+    is_allowed, remaining = check_rate_limit(client_ip, max_attempts, lockout_minutes)
+
+    if not is_allowed:
+        logger.warning(f"Rate limited API login attempt from {client_ip}")
+        return jsonify({
+            'success': False,
+            'error': f'Too many login attempts. Try again in {lockout_minutes} minutes.'
+        }), 429
+
+    # Verify credentials
+    user = get_user_by_username(username)
+
+    if not user or not verify_password(user['password_hash'], password):
+        record_login_attempt(client_ip)
+        logger.warning(f"Failed API login for '{username}' from {client_ip}")
+        return jsonify({
+            'success': False,
+            'error': 'Invalid username or password',
+            'attempts_remaining': remaining - 1
+        }), 401
+
+    # Check database availability
+    if not g.database:
+        logger.error("API login failed: database not available")
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+
+    # Generate token and store in database
+    token = generate_api_token()
+    expires_days = 30
+
+    try:
+        _run_async(
+            g.database.create_api_token(
+                username=username,
+                token=token,
+                expires_days=expires_days,
+                device_name=device_name
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to create API token: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to create token'
+        }), 500
+
+    # Clear rate limiting on success
+    clear_login_attempts(client_ip)
+
+    expires_at = datetime.now() + timedelta(days=expires_days)
+    logger.info(f"API token created for '{username}' from {client_ip} (device: {device_name})")
+
+    return jsonify({
+        'success': True,
+        'token': token,
+        'expires_at': expires_at.isoformat(),
+        'username': username,
+        'expires_in_days': expires_days
+    })
+
+
+@auth_bp.route('/api/logout', methods=['POST'])
+def api_logout():
+    """Revoke an API token.
+
+    Requires the token in the Authorization header:
+        Authorization: Bearer <token>
+
+    Returns:
+        JSON with:
+        - success: bool
+        - message: str
+    """
+    auth_header = request.headers.get('Authorization', '')
+
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            'success': False,
+            'error': 'Bearer token required in Authorization header'
+        }), 400
+
+    token = auth_header[7:]  # Remove 'Bearer ' prefix
+
+    if not g.database:
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+
+    try:
+        deleted = _run_async(g.database.delete_api_token(token))
+        if deleted:
+            logger.info("API token revoked")
+            return jsonify({
+                'success': True,
+                'message': 'Token revoked'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Token not found or already expired'
+            }), 404
+    except Exception as e:
+        logger.error(f"Failed to revoke API token: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to revoke token'
+        }), 500
 
 
 # Utility script for generating password hashes

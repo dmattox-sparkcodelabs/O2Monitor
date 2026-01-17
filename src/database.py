@@ -101,7 +101,8 @@ class Database:
                     movement INTEGER,
                     is_valid BOOLEAN,
                     avaps_state TEXT,
-                    power_watts REAL
+                    power_watts REAL,
+                    source TEXT DEFAULT 'ble'
                 )
             """)
 
@@ -117,6 +118,11 @@ class Database:
             if 'power_watts' not in columns:
                 await cursor.execute("ALTER TABLE readings ADD COLUMN power_watts REAL")
                 logger.info("Added power_watts column to readings table")
+
+            # Migration: Add source column if it doesn't exist
+            if 'source' not in columns:
+                await cursor.execute("ALTER TABLE readings ADD COLUMN source TEXT DEFAULT 'ble'")
+                logger.info("Added source column to readings table")
 
             # Alerts table
             await cursor.execute("""
@@ -183,6 +189,24 @@ class Database:
                 )
             """)
 
+            # API tokens table (for mobile/API authentication)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_tokens (
+                    token TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    last_used_at DATETIME,
+                    device_name TEXT
+                )
+            """)
+
+            # Create index on api_tokens expiration for cleanup
+            await cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_api_tokens_expires
+                ON api_tokens(expires_at)
+            """)
+
             await self._connection.commit()
 
             # Migrations - add columns to existing tables
@@ -207,7 +231,8 @@ class Database:
         reading: Optional[OxiReading] = None,
         avaps_state: AVAPSState = AVAPSState.UNKNOWN,
         power_watts: Optional[float] = None,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        source: str = 'ble'
     ) -> int:
         """Insert a new reading (with or without O2 data).
 
@@ -216,6 +241,7 @@ class Database:
             avaps_state: Current AVAPS state
             power_watts: Current AVAPS power consumption in watts
             timestamp: Timestamp for power-only readings (ignored if reading provided)
+            source: Source of reading - 'ble' (default) or 'relay' (from Android app)
 
         Returns:
             ID of the inserted row
@@ -240,8 +266,8 @@ class Database:
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
                 INSERT INTO readings
-                (timestamp, spo2, heart_rate, battery_level, movement, is_valid, avaps_state, power_watts)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (timestamp, spo2, heart_rate, battery_level, movement, is_valid, avaps_state, power_watts, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ts,
                 spo2,
@@ -251,6 +277,7 @@ class Database:
                 is_valid,
                 avaps_state.value,
                 power_watts,
+                source,
             ))
             await self._connection.commit()
             return cursor.lastrowid
@@ -749,6 +776,107 @@ class Database:
         async with self._connection.cursor() as cursor:
             await cursor.execute("""
                 DELETE FROM sessions WHERE expires_at < ?
+            """, (datetime.now().isoformat(),))
+            await self._connection.commit()
+            return cursor.rowcount
+
+    # ==================== API Token Operations ====================
+
+    async def create_api_token(
+        self,
+        username: str,
+        token: str,
+        expires_days: int = 30,
+        device_name: Optional[str] = None
+    ) -> None:
+        """Create a new API token.
+
+        Args:
+            username: Username the token belongs to
+            token: The token string
+            expires_days: Days until token expires
+            device_name: Optional device identifier
+        """
+        now = datetime.now()
+        expires_at = now + timedelta(days=expires_days)
+
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                INSERT INTO api_tokens (token, username, created_at, expires_at, device_name)
+                VALUES (?, ?, ?, ?, ?)
+            """, (token, username, now.isoformat(), expires_at.isoformat(), device_name))
+            await self._connection.commit()
+
+    async def get_api_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get API token if valid (not expired).
+
+        Args:
+            token: Token string to look up
+
+        Returns:
+            Token dict or None if not found/expired
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                SELECT * FROM api_tokens
+                WHERE token = ? AND expires_at > ?
+            """, (token, datetime.now().isoformat()))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def update_token_last_used(self, token: str) -> None:
+        """Update token's last used timestamp.
+
+        Args:
+            token: Token string
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                UPDATE api_tokens SET last_used_at = ? WHERE token = ?
+            """, (datetime.now().isoformat(), token))
+            await self._connection.commit()
+
+    async def delete_api_token(self, token: str) -> bool:
+        """Delete an API token.
+
+        Args:
+            token: Token to delete
+
+        Returns:
+            True if token was deleted
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                DELETE FROM api_tokens WHERE token = ?
+            """, (token,))
+            await self._connection.commit()
+            return cursor.rowcount > 0
+
+    async def delete_user_tokens(self, username: str) -> int:
+        """Delete all tokens for a user.
+
+        Args:
+            username: Username whose tokens to delete
+
+        Returns:
+            Number of tokens deleted
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                DELETE FROM api_tokens WHERE username = ?
+            """, (username,))
+            await self._connection.commit()
+            return cursor.rowcount
+
+    async def cleanup_expired_tokens(self) -> int:
+        """Delete all expired API tokens.
+
+        Returns:
+            Number of tokens deleted
+        """
+        async with self._connection.cursor() as cursor:
+            await cursor.execute("""
+                DELETE FROM api_tokens WHERE expires_at < ?
             """, (datetime.now().isoformat(),))
             await self._connection.commit()
             return cursor.rowcount

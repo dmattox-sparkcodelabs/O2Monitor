@@ -740,6 +740,31 @@ Priority order for next development session:
 - ~~**Phase 8**: Deployment - systemd service, installation scripts~~ [x] All Done
 - ~~**Phase 10**: Enhanced Alerting System with therapy-aware thresholds~~ [x] All Done
 - ~~**Phase 12**: Multi-Adapter Bluetooth Failover~~ [x] All Done
+- **Phase 13**: Android Relay App - Pi-side API (In Progress)
+
+## Phase 13: Android Relay App (NEW)
+
+Pi-side API for Android backup relay app. When dad moves out of BLE range of the Pi, the phone takes over reading the oximeter and relays data to the Pi over WiFi/VPN.
+
+### Pi-Side (This Instance) - COMPLETE
+- [x] Create relay API blueprint (`src/web/relay_api.py`)
+- [x] `GET /api/relay/status` - Phone checks if Pi needs help
+- [x] `POST /api/relay/reading` - Phone posts individual reading
+- [x] `POST /api/relay/batch` - Phone flushes queued readings
+- [x] `GET /api/relay/app-version` - Phone checks for updates
+- [x] Add `source` column to readings table ('ble' vs 'relay')
+- [x] Create `android/version.json` for app updates
+- [ ] Implement Pi BLE backoff when receiving relay data (optional)
+
+### Android-Side (Separate Instance)
+See `android/DESIGN.md` and `android/TODO.md` for Android app implementation.
+
+### API Notes for Android Developer
+The implemented Pi API has minor field name differences from the original design:
+- `seconds_since_reading` instead of `last_reading_age_seconds`
+- `ble_connected` instead of `pi_ble_connected`
+- `battery_level` instead of `battery`
+- No `device_id` or `queued` fields (can be added if needed)
 
 ### Remaining Tasks
 - [ ] Update dashboard to show current therapy mode indicator

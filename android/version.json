@@ -1,0 +1,8 @@
+{
+  "latest_version": "1.0.0",
+  "latest_version_code": 1,
+  "min_supported_version": "1.0.0",
+  "min_supported_version_code": 1,
+  "download_url": "",
+  "release_notes": "Initial release of O2 Relay Android app.\n\n- Bluetooth connection to Checkme O2 Max oximeter\n- Relay readings to Pi when out of range\n- Background service for continuous monitoring\n- Battery optimization support"
+}

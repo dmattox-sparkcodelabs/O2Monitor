@@ -66,10 +66,12 @@ def create_app(config, state_machine=None, database=None, alert_manager=None):
     from src.web.routes import main_bp
     from src.web.api import api_bp
     from src.web.auth import auth_bp
+    from src.web.relay_api import relay_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(relay_bp, url_prefix='/api/relay')
 
     # Context processor for templates
     @app.context_processor

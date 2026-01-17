@@ -24,20 +24,11 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request, session
 
 from src.models import Alert, AlertSeverity, AlertType
+from src.web.auth import api_login_required
 
 logger = logging.getLogger(__name__)
 
 api_bp = Blueprint('api', __name__)
-
-
-def api_login_required(f):
-    """Decorator for API endpoints requiring authentication."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if 'user' not in session:
-            return jsonify({'error': 'Authentication required'}), 401
-        return f(*args, **kwargs)
-    return decorated
 
 
 def run_async(coro):

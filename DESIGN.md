@@ -554,15 +554,71 @@ CREATE TABLE sessions (
 
 ### 3.6 Authentication (`auth.py`)
 
-**Purpose:** Secure access to web dashboard.
+**Purpose:** Secure access to web dashboard and APIs.
 
 **Features:**
 - Username/password authentication
 - bcrypt password hashing (cost factor 12)
-- Session-based auth with secure cookies
-- Auto-logout after 30 minutes of inactivity
+- Session-based auth with secure cookies (web dashboard)
+- **API token authentication** (30-day tokens for mobile/API access)
+- Auto-logout after 30 minutes of inactivity (session-based)
 - Rate limiting: 5 failed attempts = 15-minute lockout
 - All credentials stored hashed in config.yaml
+
+#### 3.6.1 API Token Authentication
+
+For mobile apps and API clients, the system supports long-lived bearer tokens that don't require maintaining browser sessions.
+
+**Token Characteristics:**
+- 64-character hex tokens (256-bit entropy)
+- 30-day expiration by default
+- Stored in database with username, created_at, expires_at, device_name
+- Last-used timestamp tracked for auditing
+
+**API Endpoints:**
+
+```
+POST /auth/api/login
+Request (JSON):
+{
+  "username": "admin",
+  "password": "yourpassword",
+  "device_name": "Android App"  // optional
+}
+Response:
+{
+  "success": true,
+  "token": "47f27100fda020fb2408efb5aade0f2b...",
+  "expires_at": "2024-02-15T10:30:00",
+  "username": "admin",
+  "expires_in_days": 30
+}
+
+POST /auth/api/logout
+Header: Authorization: Bearer <token>
+Response: {"success": true, "message": "Token revoked"}
+```
+
+**Using Tokens:**
+
+All API endpoints (including relay API) accept token authentication via the Authorization header:
+
+```
+Authorization: Bearer <token>
+```
+
+Example:
+```bash
+curl -H "Authorization: Bearer 47f27100fda020fb2408..." \
+  http://pi.local:5000/api/relay/status
+```
+
+**Unified Auth Decorator:**
+
+The `api_login_required` decorator accepts both session and token auth:
+1. First checks for session-based auth (web dashboard)
+2. If no session, checks for Bearer token in Authorization header
+3. Sets `g.api_user` to authenticated username
 
 **Implementation:**
 ```python
@@ -576,6 +632,12 @@ class AuthManager:
 
     @staticmethod
     def hash_password(password: str) -> str
+
+# Token operations (via Database class)
+async def create_api_token(username, token, expires_days, device_name)
+async def get_api_token(token) -> Optional[Dict]
+async def delete_api_token(token) -> bool
+async def cleanup_expired_tokens() -> int
 ```
 
 ---
@@ -1298,6 +1360,87 @@ PUT  /api/config          → Update thresholds (admin only)
 - [x] Add Bluetooth & Timeouts settings section
 - [x] Implement periodic adapter health checks
 - [x] Add adapter_disconnect alert type
+
+### Phase 8: Android Relay App (In Progress)
+Pi-side API implementation for Android backup relay app.
+
+**Completed:**
+- [x] Create relay API blueprint (`src/web/relay_api.py`)
+- [x] Implement `GET /api/relay/status` endpoint
+- [x] Implement `POST /api/relay/reading` endpoint
+- [x] Implement `POST /api/relay/batch` endpoint
+- [x] Implement `GET /api/relay/app-version` endpoint
+- [x] Add `source` column to readings table (tracks 'ble' vs 'relay')
+- [x] Create `android/version.json` for app updates
+- [x] **Implement API token authentication** (30-day bearer tokens)
+- [x] Add `api_tokens` table to database
+- [x] Add `POST /auth/api/login` endpoint (returns 30-day token)
+- [x] Add `POST /auth/api/logout` endpoint (token revocation)
+- [x] Unified auth decorator accepts both session and token auth
+
+**Pending:**
+- [ ] Implement Pi BLE backoff when receiving relay data
+- [ ] Android app implementation (separate instance)
+
+**Authentication:**
+All relay API endpoints require authentication via either:
+1. Session cookie (from web login)
+2. Bearer token in Authorization header
+
+To obtain a token:
+```bash
+curl -X POST http://pi:5000/auth/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "yourpassword", "device_name": "Android App"}'
+# Returns: {"success": true, "token": "abc123...", "expires_in_days": 30}
+```
+
+**Relay API Endpoints (Implemented):**
+
+```
+GET /api/relay/status
+Header: Authorization: Bearer <token>
+Response: {
+  "needs_relay": false,
+  "ble_connected": true,
+  "seconds_since_reading": 5,
+  "relay_active": false,
+  "pi_timestamp": "2024-01-15T10:30:00",
+  "late_reading_threshold_seconds": 30
+}
+
+POST /api/relay/reading
+Request: {
+  "spo2": 97,
+  "heart_rate": 72,
+  "battery_level": 85,
+  "timestamp": "2024-01-15T10:30:00",
+  "is_valid": true
+}
+Response: {"success": true, "message": "Reading accepted", "reading_id": 1}
+
+POST /api/relay/batch
+Request: {"readings": [...]}
+Response: {"success": true, "accepted": 3, "rejected": 0, "errors": []}
+
+GET /api/relay/app-version
+Response: {
+  "latest_version": "1.0.0",
+  "latest_version_code": 1,
+  "min_supported_version": "1.0.0",
+  "min_supported_version_code": 1,
+  "download_url": "",
+  "release_notes": "..."
+}
+```
+
+**Note for Android Developer:**
+The implemented API has minor field name differences from `android/DESIGN.md`:
+- Status: `seconds_since_reading` (not `last_reading_age_seconds`)
+- Status: `ble_connected` (not `pi_ble_connected`)
+- Reading: `battery_level` (not `battery`)
+- Reading: No `device_id` or `queued` fields (can be added if needed)
+- Version: `latest_version` (not `version`), `download_url` (not `apk_url`)
 
 ---
 
