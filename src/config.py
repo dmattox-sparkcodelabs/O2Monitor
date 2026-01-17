@@ -637,6 +637,7 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
 
     existing['alerting'] = existing.get('alerting', {})
     existing['alerting']['local_audio'] = existing['alerting'].get('local_audio', {})
+    existing['alerting']['local_audio']['enabled'] = config.alerting.local_audio.enabled
     existing['alerting']['local_audio']['volume'] = config.alerting.local_audio.volume
 
     # Only save routing_key/ping_url if they're not env var placeholders

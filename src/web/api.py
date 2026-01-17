@@ -409,12 +409,12 @@ def trigger_test_alert():
         message=alert_messages.get(alert_type_str, 'Test alert'),
     )
 
-    # Trigger full alert (including PagerDuty)
-    run_async(g.alert_manager.trigger_alarm(alert))
+    # Trigger full alert (including PagerDuty) and capture dedup_key
+    pagerduty_dedup_key = run_async(g.alert_manager.trigger_alarm(alert))
 
-    # Store in database
+    # Store in database with dedup_key for two-way sync
     if g.database:
-        run_async(g.database.insert_alert(alert))
+        run_async(g.database.insert_alert(alert, pagerduty_dedup_key=pagerduty_dedup_key))
 
     logger.info(f"Test alert ({alert_type_str}, {severity.value}) triggered by {session.get('user')}")
 
@@ -736,19 +736,24 @@ def update_config():
 def test_audio():
     """Play a test sound through local audio."""
     import subprocess
+    import math
 
     data = request.get_json() or {}
     volume = min(100, max(0, int(data.get('volume', 50))))
 
+    # ALSA uses logarithmic scale, so we compensate to make slider feel linear
+    # If we send X%, ALSA displays roughly (X^2/100)%, so we send sqrt(volume)*10
+    amixer_volume = int(math.sqrt(volume) * 10)
+
     try:
-        # Set volume using amixer
+        # Set volume using amixer on headphone card (card 0, PCM control)
         subprocess.run(
-            ['amixer', 'set', 'Master', f'{volume}%'],
+            ['amixer', '-c', '0', 'set', 'PCM', f'{amixer_volume}%'],
             capture_output=True,
             timeout=5
         )
 
-        # Play test sound - try espeak first, then aplay with a beep
+        # Play test sound using espeak at fixed amplitude, amixer controls actual volume
         result = subprocess.run(
             ['espeak', '-a', '200', 'Audio test'],
             capture_output=True,

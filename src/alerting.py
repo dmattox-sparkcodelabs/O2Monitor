@@ -216,6 +216,14 @@ class AudioAlert:
         except Exception as e:
             logger.error(f"TTS error: {e}")
 
+    def _speak_sync(self, message: str) -> None:
+        """Speak a message synchronously (blocking).
+
+        Args:
+            message: Text to speak
+        """
+        self.speak(message, blocking=True)
+
     async def play_alarm_pattern(self, severity: str = "critical") -> None:
         """Play alarm pattern for given severity.
 
@@ -279,15 +287,21 @@ class AudioAlert:
             message: Message to speak via TTS
             repeat_interval: Seconds between repeats
         """
+        # Always play immediate TTS for every new alert
+        if self._use_tts and message:
+            self._speak_sync(message)
+
         if self._alarm_task and not self._alarm_task.done():
             # Already playing - update severity/message if different
             if severity != self._current_severity or message != self._current_message:
                 self.stop_alarm()
             else:
+                logger.info(f"Alarm already active, TTS played for: {message}")
                 return
 
         self._current_severity = severity
         self._current_message = message
+
         self._alarm_task = asyncio.create_task(self.play_alarm(severity, message, repeat_interval))
         logger.info(f"Started {severity} alarm: {message}")
 
@@ -361,18 +375,20 @@ class PagerDutyClient:
             await self._session.close()
             self._session = None
 
-    def _make_dedup_key(self, alert_type: str, date: Optional[datetime] = None) -> str:
+    def _make_dedup_key(self, alert_type: str, alert_id: Optional[str] = None) -> str:
         """Create deduplication key for alert.
 
         Args:
             alert_type: Type of alert (spo2, ble, etc.)
-            date: Date for key (defaults to today)
+            alert_id: Unique alert ID (each alert gets its own incident)
 
         Returns:
             Dedup key string
         """
-        date = date or datetime.now()
-        return f"o2-{alert_type}-{date.strftime('%Y%m%d')}"
+        if alert_id:
+            return f"o2-{alert_type}-{alert_id}"
+        # Fallback with timestamp for uniqueness
+        return f"o2-{alert_type}-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
     async def trigger_incident(
         self,
@@ -412,20 +428,21 @@ class PagerDutyClient:
             payload["dedup_key"] = dedup_key
 
         try:
-            session = await self._get_session()
-            async with session.post(
-                self.EVENTS_API_URL,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 202:
-                    data = await resp.json()
-                    logger.info(f"PagerDuty incident triggered: {summary}")
-                    return data.get("dedup_key", dedup_key)
-                else:
-                    text = await resp.text()
-                    logger.error(f"PagerDuty API error {resp.status}: {text}")
-                    return None
+            # Create fresh session to avoid event loop issues with Flask
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.EVENTS_API_URL,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 202:
+                        data = await resp.json()
+                        logger.info(f"PagerDuty incident triggered: {summary}")
+                        return data.get("dedup_key", dedup_key)
+                    else:
+                        text = await resp.text()
+                        logger.error(f"PagerDuty API error {resp.status}: {text}")
+                        return None
         except Exception as e:
             logger.error(f"PagerDuty API request failed: {e}")
             return None
@@ -472,19 +489,20 @@ class PagerDutyClient:
         }
 
         try:
-            session = await self._get_session()
-            async with session.post(
-                self.EVENTS_API_URL,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 202:
-                    logger.info(f"PagerDuty incident {action}d: {dedup_key}")
-                    return True
-                else:
-                    text = await resp.text()
-                    logger.error(f"PagerDuty API error {resp.status}: {text}")
-                    return False
+            # Create fresh session to avoid event loop issues with Flask
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.EVENTS_API_URL,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 202:
+                        logger.info(f"PagerDuty incident {action}d: {dedup_key}")
+                        return True
+                    else:
+                        text = await resp.text()
+                        logger.error(f"PagerDuty API error {resp.status}: {text}")
+                        return False
         except Exception as e:
             logger.error(f"PagerDuty API request failed: {e}")
             return False
@@ -503,7 +521,6 @@ class PagerDutyClient:
             return None
 
         try:
-            session = await self._get_session()
             headers = {
                 "Authorization": f"Token token={self.api_token}",
                 "Content-Type": "application/json",
@@ -515,40 +532,42 @@ class PagerDutyClient:
                 "statuses[]": ["triggered", "acknowledged", "resolved"],
             }
 
-            async with session.get(
-                f"{self.REST_API_URL}/incidents",
-                headers=headers,
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    incidents = data.get("incidents", [])
-                    if incidents:
-                        incident = incidents[0]  # Get most recent
-                        status = incident.get("status", "unknown")
-                        acknowledged_by = None
+            # Create fresh session to avoid event loop issues
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.REST_API_URL}/incidents",
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        incidents = data.get("incidents", [])
+                        if incidents:
+                            incident = incidents[0]  # Get most recent
+                            status = incident.get("status", "unknown")
+                            acknowledged_by = None
 
-                        # Try to get who acknowledged
-                        if status in ("acknowledged", "resolved"):
-                            assignments = incident.get("assignments", [])
-                            if assignments:
-                                assignee = assignments[0].get("assignee", {})
-                                acknowledged_by = assignee.get("summary", "PagerDuty")
+                            # Try to get who acknowledged
+                            if status in ("acknowledged", "resolved"):
+                                assignments = incident.get("assignments", [])
+                                if assignments:
+                                    assignee = assignments[0].get("assignee", {})
+                                    acknowledged_by = assignee.get("summary", "PagerDuty")
 
-                        return {
-                            "status": status,
-                            "acknowledged_by": acknowledged_by,
-                            "incident_id": incident.get("id"),
-                        }
-                    return None
-                elif resp.status == 401:
-                    logger.error("PagerDuty API token invalid or expired")
-                    return None
-                else:
-                    text = await resp.text()
-                    logger.error(f"PagerDuty REST API error {resp.status}: {text}")
-                    return None
+                            return {
+                                "status": status,
+                                "acknowledged_by": acknowledged_by,
+                                "incident_id": incident.get("id"),
+                            }
+                        return None
+                    elif resp.status == 401:
+                        logger.error("PagerDuty API token invalid or expired")
+                        return None
+                    else:
+                        text = await resp.text()
+                        logger.error(f"PagerDuty REST API error {resp.status}: {text}")
+                        return None
         except Exception as e:
             logger.error(f"PagerDuty REST API request failed: {e}")
             return None
@@ -759,9 +778,9 @@ class AlertManager:
         # PagerDuty
         pd_key = None
         if self._pagerduty:
-            dedup_key = self._pagerduty._make_dedup_key(alert.alert_type.value)
+            dedup_key = self._pagerduty._make_dedup_key(alert.alert_type.value, alert.id)
             pd_key = await self._pagerduty.trigger_incident(
-                summary=alert.message,
+                summary=f"[{alert.id}] {alert.message}",
                 severity=self._severity_to_pd(alert.severity),
                 dedup_key=dedup_key,
                 custom_details={

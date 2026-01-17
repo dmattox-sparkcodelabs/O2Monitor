@@ -119,6 +119,7 @@
             return `
                 <tr>
                     <td>${formatTime(time)}</td>
+                    <td><code>${escapeHtml(alert.id)}</code></td>
                     <td>${formatAlertType(alert.alert_type)}</td>
                     <td><span class="severity-badge ${severityClass}">${alert.severity}</span></td>
                     <td>${escapeHtml(alert.message)}</td>
