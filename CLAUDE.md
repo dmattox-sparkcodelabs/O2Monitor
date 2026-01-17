@@ -10,6 +10,8 @@
 >
 > This file is checked into git. Credentials belong in `.secrets.md` (gitignored).
 > The pre-commit hook will block you if you try to add API keys, tokens, or passwords here.
+>
+> **NEVER use `git commit --no-verify`** - If the hook blocks you, fix the problem, don't bypass it.
 
 ## Secrets Location
 
