@@ -44,7 +44,9 @@
         adapterHallwayIndicator: document.getElementById('adapter-hallway-indicator'),
         adapterHallwayStatus: document.getElementById('adapter-hallway-status'),
         adapterBedroomIndicator: document.getElementById('adapter-bedroom-indicator'),
-        adapterBedroomStatus: document.getElementById('adapter-bedroom-status')
+        adapterBedroomStatus: document.getElementById('adapter-bedroom-status'),
+        adapterPhoneIndicator: document.getElementById('adapter-phone-indicator'),
+        adapterPhoneStatus: document.getElementById('adapter-phone-status')
     };
 
     // State class to CSS class mapping
@@ -693,6 +695,9 @@
                     } else if (adapter.id === 'bedroom') {
                         indicatorEl = elements.adapterBedroomIndicator;
                         statusEl = elements.adapterBedroomStatus;
+                    } else if (adapter.id === 'phone') {
+                        indicatorEl = elements.adapterPhoneIndicator;
+                        statusEl = elements.adapterPhoneStatus;
                     }
 
                     if (indicatorEl && statusEl) {

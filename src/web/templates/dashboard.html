@@ -55,6 +55,11 @@
                     <span class="status-label">Bedroom</span>
                     <span class="status-value" id="adapter-bedroom-status">--</span>
                 </div>
+                <div class="adapter-item" id="adapter-phone">
+                    <span class="adapter-indicator offline" id="adapter-phone-indicator"></span>
+                    <span class="status-label">Phone</span>
+                    <span class="status-value" id="adapter-phone-status">--</span>
+                </div>
             </div>
         </div>
         <div class="status-item">
@@ -102,5 +107,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=17"></script>
 {% endblock %}

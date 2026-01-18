@@ -977,11 +977,40 @@ def get_adapters():
                 adapter['status'] = 'standby'
                 adapter['status_text'] = 'Standby'
 
+        # Add phone/relay status as a pseudo-adapter
+        relay_active = False
+        relay_status = 'standby'
+        relay_status_text = 'Standby'
+
+        if g.state_machine:
+            last_relay_time = getattr(g.state_machine, '_last_relay_reading_time', None)
+            if last_relay_time:
+                relay_age = (datetime.now() - last_relay_time).total_seconds()
+                relay_active = relay_age < 30  # Relay is active if data received in last 30s
+
+                if relay_active:
+                    relay_status = 'active'
+                    relay_status_text = 'Relaying'
+                    # If phone is active, Pi adapters should show as standby (not the source)
+                    for adapter in adapters:
+                        if adapter['status'] == 'active':
+                            adapter['status'] = 'standby'
+                            adapter['status_text'] = 'Standby'
+
+        adapters.append({
+            'id': 'phone',
+            'name': 'Phone',
+            'status': relay_status,
+            'status_text': relay_status_text,
+            'detected': True,  # Phone is always "available" as a concept
+        })
+
         return jsonify({
             'adapters': adapters,
             'ble_connected': ble_connected,
             'is_switching_mode': is_switching_mode,
             'active_adapter': active_adapter_name,
+            'relay_active': relay_active,
         })
 
     except subprocess.TimeoutExpired:

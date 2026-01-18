@@ -407,6 +407,12 @@ def _update_state_machine_with_relay(state_machine, reading: OxiReading) -> None
     if hasattr(state_machine, '_disconnect_start'):
         state_machine._disconnect_start = None
 
+    # Tell BLE reader to back off reconnection attempts
+    # Back off for 60 seconds - will be extended with each relay reading
+    if hasattr(state_machine, 'ble_reader') and state_machine.ble_reader:
+        if hasattr(state_machine.ble_reader, 'set_relay_backoff'):
+            state_machine.ble_reader.set_relay_backoff(active=True, duration_seconds=60)
+
     logger.debug(
         f"State machine updated with relay reading: "
         f"SpO2={reading.spo2}%, HR={reading.heart_rate}bpm"

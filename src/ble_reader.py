@@ -546,6 +546,10 @@ class CheckmeO2Reader:
         self._disconnect_start_time: Optional[float] = None
         self._last_successful_reading_time: Optional[float] = None
 
+        # Relay backoff - when phone is relaying, don't reconnect
+        self._relay_backoff: bool = False
+        self._relay_backoff_until: Optional[float] = None
+
         # Adapter management
         self._adapter_manager: Optional[AdapterManager] = None
         if adapters_config:
@@ -596,6 +600,36 @@ class CheckmeO2Reader:
     def current_adapter_name(self) -> str:
         """Get the name of the currently active adapter."""
         return self._current_adapter_name
+
+    def set_relay_backoff(self, active: bool, duration_seconds: int = 60) -> None:
+        """Set relay backoff mode.
+
+        When relay backoff is active, the BLE reader will stop attempting
+        to reconnect. This is used when the phone is relaying data.
+
+        Args:
+            active: True to enable backoff, False to disable
+            duration_seconds: How long to back off (default 60s)
+        """
+        self._relay_backoff = active
+        if active:
+            self._relay_backoff_until = time.time() + duration_seconds
+            logger.info(f"BLE relay backoff enabled for {duration_seconds}s (phone is relaying)")
+        else:
+            self._relay_backoff_until = None
+            logger.info("BLE relay backoff disabled")
+
+    @property
+    def is_relay_backoff_active(self) -> bool:
+        """Check if relay backoff is currently active."""
+        if not self._relay_backoff:
+            return False
+        if self._relay_backoff_until and time.time() > self._relay_backoff_until:
+            # Backoff expired
+            self._relay_backoff = False
+            self._relay_backoff_until = None
+            return False
+        return True
 
     def _select_and_activate_adapter(self):
         """Select and activate the current adapter."""
@@ -758,6 +792,13 @@ class CheckmeO2Reader:
         # Process messages from worker
         try:
             while self._running:
+                # Check if relay backoff is active (phone is relaying data)
+                if self.is_relay_backoff_active:
+                    # Phone is relaying - don't try to reconnect BLE
+                    # Just wait and keep checking
+                    time.sleep(1.0)
+                    continue
+
                 # Check if process died
                 if self._process and not self._process.is_alive():
                     self._consecutive_failures += 1
@@ -802,8 +843,10 @@ class CheckmeO2Reader:
 
                 except Exception:
                     # Queue timeout - check adapter health and switch if needed
-                    self._check_adapter_health()
-                    self._check_adapter_switch_needed()
+                    # Skip these checks if relay backoff is active
+                    if not self.is_relay_backoff_active:
+                        self._check_adapter_health()
+                        self._check_adapter_switch_needed()
 
         except KeyboardInterrupt:
             logger.info("Interrupted")

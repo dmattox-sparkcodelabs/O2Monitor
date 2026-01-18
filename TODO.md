@@ -754,7 +754,8 @@ Pi-side API for Android backup relay app. When dad moves out of BLE range of the
 - [x] `GET /api/relay/app-version` - Phone checks for updates
 - [x] Add `source` column to readings table ('ble' vs 'relay')
 - [x] Create `android/version.json` for app updates
-- [ ] Implement Pi BLE backoff when receiving relay data (optional)
+- [x] Implement Pi BLE backoff when receiving relay data
+- [x] Add phone/relay indicator to dashboard adapter card
 
 ### Android-Side (Separate Instance)
 See `android/DESIGN.md` and `android/TODO.md` for Android app implementation.
@@ -767,8 +768,8 @@ The implemented Pi API has minor field name differences from the original design
 - No `device_id` or `queued` fields (can be added if needed)
 
 ### Remaining Tasks
-- [ ] Update dashboard to show current therapy mode indicator
-- [ ] Unit tests for alert evaluator
+- [x] Update dashboard to show current therapy mode indicator
+- [x] Unit tests for alert evaluator
 - [ ] Simulated failure testing (unplug adapters, network errors)
 - [ ] Family training on dashboard
 - [ ] Document operational runbooks
