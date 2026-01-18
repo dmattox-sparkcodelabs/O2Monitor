@@ -1415,6 +1415,8 @@ Response: {
   "relay_active": false,
   "pi_timestamp": "2024-01-15T10:30:00",
   "late_reading_threshold_seconds": 30,
+  "therapy_active": true,
+  "power_watts": 42.5,
   "current_vitals": {
     "spo2": 97,
     "heart_rate": 72,
@@ -1425,9 +1427,10 @@ Response: {
   }
 }
 
-Note: `source` indicates where the reading came from:
-- "Hallway" or "Bedroom" - Pi's BLE adapter name
-- "Mobile" - Phone relay app
+Notes:
+- `source` indicates where the reading came from: "Hallway", "Bedroom" (Pi adapters), or "Mobile" (phone relay)
+- `therapy_active` is true when AVAPS machine is running (power > 30W)
+- `power_watts` is the current draw from the Kasa smart plug (null if unavailable)
 
 POST /api/relay/reading
 Request: {

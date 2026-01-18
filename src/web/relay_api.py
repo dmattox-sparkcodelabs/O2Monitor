@@ -61,6 +61,8 @@ def get_relay_status():
         - relay_active: bool - True if Pi is currently receiving relay data
         - pi_timestamp: str - Current Pi time (for clock sync check)
         - current_vitals: object|null - Latest vitals data for display
+        - therapy_active: bool - True if AVAPS therapy is on
+        - power_watts: float|null - Current AVAPS power draw in watts
 
     The phone should start relaying when needs_relay is True and stop
     when it becomes False.
@@ -120,6 +122,10 @@ def get_relay_status():
             'source': source,
         }
 
+    # Get therapy (AVAPS) status and power
+    therapy_active = status.avaps_state == AVAPSState.ON
+    power_watts = status.avaps_power_watts
+
     return jsonify({
         'needs_relay': needs_relay,
         'ble_connected': status.ble_status.connected,
@@ -128,6 +134,8 @@ def get_relay_status():
         'pi_timestamp': datetime.now().isoformat(),
         'late_reading_threshold_seconds': late_threshold,
         'current_vitals': current_vitals,
+        'therapy_active': therapy_active,
+        'power_watts': power_watts,
     })
 
 
