@@ -8,9 +8,9 @@
 
 ## Life-Safety Monitoring for OHS Patient (Proof of Concept)
 
-**Version:** 1.4
-**Date:** 2026-01-14
-**Status:** Implementation Complete (multi-adapter failover and enhanced alerting)
+**Version:** 1.5
+**Date:** 2026-01-17
+**Status:** Implementation Complete (multi-adapter failover, relay API, and phone indicator)
 
 ---
 
@@ -177,8 +177,15 @@ class AdapterManager:
 |-------|-------|---------|
 | Active | Green | Currently connected and receiving readings |
 | Connecting | Amber (pulsing) | Attempting to connect |
-| Standby | Blue | Available but intentionally down (not in use) |
+| Standby | Blue | Available but not the active data source |
 | Offline | Gray | Not detected (unplugged or failed) |
+
+**Phone Relay Indicator:**
+The dashboard includes a "Phone" indicator alongside the Hallway and Bedroom adapters. This shows whether the Android app is actively relaying oximeter data:
+- **Relaying** (Green): Phone is actively sending readings (data received within last 30s)
+- **Standby** (Blue): Phone is not currently relaying
+
+When the phone is actively relaying, the Pi adapters show "Standby" since the phone is the current data source.
 
 **Configuration:**
 ```yaml
@@ -1361,7 +1368,7 @@ PUT  /api/config          → Update thresholds (admin only)
 - [x] Implement periodic adapter health checks
 - [x] Add adapter_disconnect alert type
 
-### Phase 8: Android Relay App (In Progress)
+### Phase 8: Android Relay App ✅
 Pi-side API implementation for Android backup relay app.
 
 **Completed:**
@@ -1377,10 +1384,11 @@ Pi-side API implementation for Android backup relay app.
 - [x] Add `POST /auth/api/login` endpoint (returns 30-day token)
 - [x] Add `POST /auth/api/logout` endpoint (token revocation)
 - [x] Unified auth decorator accepts both session and token auth
+- [x] **Implement Pi BLE backoff when receiving relay data**
+- [x] **Add phone relay indicator to dashboard adapter card**
 
 **Pending:**
-- [ ] Implement Pi BLE backoff when receiving relay data
-- [ ] Android app implementation (separate instance)
+- [ ] Android app implementation (separate instance - see `android/DESIGN.md`)
 
 **Authentication:**
 All relay API endpoints require authentication via either:
@@ -1441,6 +1449,21 @@ The implemented API has minor field name differences from `android/DESIGN.md`:
 - Reading: `battery_level` (not `battery`)
 - Reading: No `device_id` or `queued` fields (can be added if needed)
 - Version: `latest_version` (not `version`), `download_url` (not `apk_url`)
+
+**BLE Backoff Mechanism:**
+When the phone is actively relaying data, the Pi's BLE reader backs off from attempting to reconnect. This prevents:
+1. BLE interference between Pi and phone competing for the oximeter
+2. Wasted resources on reconnection attempts when data is already flowing
+3. Potential connection instability from multiple devices
+
+How it works:
+- Each relay reading triggers a 60-second backoff timer
+- During backoff, the BLE reader skips worker process respawning and adapter switching
+- The timer is extended with each new relay reading
+- When no relay data is received for 60 seconds, normal BLE reconnection resumes
+- The `is_relay_backoff_active` property tracks the current state
+
+The backoff is implemented in `src/ble_reader.py` via the `set_relay_backoff()` method, called from `src/web/relay_api.py` when processing relay readings.
 
 ---
 
