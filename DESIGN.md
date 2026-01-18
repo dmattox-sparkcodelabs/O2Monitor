@@ -1424,11 +1424,20 @@ Response: {
     "is_valid": true,
     "timestamp": "2024-01-15T10:30:00",
     "source": "Hallway"
-  }
+  },
+  "sources": [
+    {"name": "Hallway", "type": "ble", "active": true},
+    {"name": "Bedroom", "type": "ble", "active": false},
+    {"name": "Mobile", "type": "relay", "active": false}
+  ]
 }
 
 Notes:
-- `source` indicates where the reading came from: "Hallway", "Bedroom" (Pi adapters), or "Mobile" (phone relay)
+- `source` in `current_vitals` indicates where the current reading came from
+- `sources` array lists all possible data sources with an `active` indicator
+  - `type: "ble"` = Pi Bluetooth adapter
+  - `type: "relay"` = Android phone relay
+  - Only one source can be active at a time (or none if disconnected)
 - `therapy_active` is true when AVAPS machine is running (power > 30W)
 - `power_watts` is the current draw from the Kasa smart plug (null if unavailable)
 

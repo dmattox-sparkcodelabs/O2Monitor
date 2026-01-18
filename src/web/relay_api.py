@@ -126,6 +126,36 @@ def get_relay_status():
     therapy_active = status.avaps_state == AVAPSState.ON
     power_watts = status.avaps_power_watts
 
+    # Build sources list with active indicator
+    # Sources are the configured BLE adapters plus Mobile
+    sources = []
+    active_source = None
+
+    # Determine the active source
+    if relay_active:
+        active_source = 'Mobile'
+    elif g.state_machine and hasattr(g.state_machine, 'ble_reader'):
+        ble_reader = g.state_machine.ble_reader
+        if hasattr(ble_reader, 'current_adapter_name') and ble_reader.current_adapter_name:
+            if status.ble_status.connected:
+                active_source = ble_reader.current_adapter_name
+
+    # Get configured adapter names from config
+    if g.config and hasattr(g.config, 'bluetooth') and g.config.bluetooth.adapters:
+        for adapter in g.config.bluetooth.adapters:
+            sources.append({
+                'name': adapter.name,
+                'type': 'ble',
+                'active': adapter.name == active_source,
+            })
+
+    # Always add Mobile as a source option
+    sources.append({
+        'name': 'Mobile',
+        'type': 'relay',
+        'active': active_source == 'Mobile',
+    })
+
     return jsonify({
         'needs_relay': needs_relay,
         'ble_connected': status.ble_status.connected,
@@ -136,6 +166,7 @@ def get_relay_status():
         'current_vitals': current_vitals,
         'therapy_active': therapy_active,
         'power_watts': power_watts,
+        'sources': sources,
     })
 
 
