@@ -60,6 +60,7 @@ def get_relay_status():
         - seconds_since_reading: int|null - Seconds since last valid reading
         - relay_active: bool - True if Pi is currently receiving relay data
         - pi_timestamp: str - Current Pi time (for clock sync check)
+        - current_vitals: object|null - Latest vitals data for display
 
     The phone should start relaying when needs_relay is True and stop
     when it becomes False.
@@ -95,6 +96,30 @@ def get_relay_status():
         relay_age = (datetime.now() - last_relay_time).total_seconds()
         relay_active = relay_age < 30
 
+    # Build current vitals for display on the phone
+    current_vitals = None
+    reading = status.current_reading
+    if reading:
+        # Determine source: adapter name (Hallway, Bedroom) or Mobile
+        if relay_active:
+            source = 'Mobile'
+        else:
+            # Get the current adapter name from BLE reader
+            source = 'BLE'  # Default fallback
+            if g.state_machine and hasattr(g.state_machine, 'ble_reader'):
+                ble_reader = g.state_machine.ble_reader
+                if hasattr(ble_reader, 'current_adapter_name'):
+                    source = ble_reader.current_adapter_name or 'BLE'
+
+        current_vitals = {
+            'spo2': reading.spo2,
+            'heart_rate': reading.heart_rate,
+            'battery_level': reading.battery_level,
+            'is_valid': reading.is_valid,
+            'timestamp': reading.timestamp.isoformat() if reading.timestamp else None,
+            'source': source,
+        }
+
     return jsonify({
         'needs_relay': needs_relay,
         'ble_connected': status.ble_status.connected,
@@ -102,6 +127,7 @@ def get_relay_status():
         'relay_active': relay_active,
         'pi_timestamp': datetime.now().isoformat(),
         'late_reading_threshold_seconds': late_threshold,
+        'current_vitals': current_vitals,
     })
 
 

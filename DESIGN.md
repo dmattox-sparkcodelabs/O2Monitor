@@ -1414,8 +1414,20 @@ Response: {
   "seconds_since_reading": 5,
   "relay_active": false,
   "pi_timestamp": "2024-01-15T10:30:00",
-  "late_reading_threshold_seconds": 30
+  "late_reading_threshold_seconds": 30,
+  "current_vitals": {
+    "spo2": 97,
+    "heart_rate": 72,
+    "battery_level": 85,
+    "is_valid": true,
+    "timestamp": "2024-01-15T10:30:00",
+    "source": "Hallway"
+  }
 }
+
+Note: `source` indicates where the reading came from:
+- "Hallway" or "Bedroom" - Pi's BLE adapter name
+- "Mobile" - Phone relay app
 
 POST /api/relay/reading
 Request: {
