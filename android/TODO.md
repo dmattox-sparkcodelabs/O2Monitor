@@ -119,7 +119,7 @@ These endpoints are required before the Android app can function.
   - Language: Kotlin
 
 - [x] **(Android) Configure build.gradle.kts**
-  - Kotlin 2.1.0, AGP 8.7.3
+  - Kotlin 2.1.0, AGP 8.9.1
   - Dependencies configured:
     - AndroidX Core KTX, AppCompat, Material, Activity, ConstraintLayout
     - Coroutines (core + android)
@@ -278,39 +278,58 @@ These endpoints are required before the Android app can function.
 
 ### 1.6 Basic UI (Android)
 
-- [ ] **(Android) Create activity_main.xml layout**
+- [x] **(Android) Create activity_main.xml layout**
   - Status card (state, description)
+  - Readings card (SpO2, HR, Battery) - shown when connected
   - Check-in info (last check, Pi status)
+  - Stats text (sent/queued counts)
+  - Error text display
   - Start/Stop button
   - Server URL display
   - Version info footer
 
-- [ ] **(Android) Create MainActivity.kt**
+- [x] **(Android) Create MainActivity.kt**
   - Bind to RelayService
-  - Observe service state
+  - Observe service state via StateListener interface
   - Update UI on state changes
   - Handle Start/Stop button
   - Handle permissions flow on first launch
 
-- [ ] **(Android) Service binding**
+- [x] **(Android) Service binding**
   - `ServiceConnection` implementation
   - Bind on `onStart()`, unbind on `onStop()`
-  - Get state updates from service
+  - Get state updates from service via StateListener
 
-- [ ] **(Android) Permission request flow**
-  - On first launch, explain why permissions needed
-  - Request BLE permissions
-  - Request location permission
-  - Handle denial gracefully (show instructions)
+- [x] **(Android) Permission request flow**
+  - ActivityResultContracts for modern permission handling
+  - Request BLE permissions (version-aware)
+  - Request location permission (Android <12)
+  - Handle denial gracefully (show error message)
 
 ### 1.7 Settings Storage (Android)
 
-- [ ] **(Android) Create SettingsManager.kt**
-  - SharedPreferences wrapper
-  - `serverUrl: String` (default: "http://192.168.4.100:5000")
+- [x] **(Android) Create SettingsManager.kt**
+  - SharedPreferences wrapper with property accessors
+  - `serverUrl: String` (default: "http://10.6.0.7:5000" - Pi via WireGuard VPN)
   - `oximeterMac: String` (default: "C8:F1:6B:56:7B:F1")
-  - `checkInIntervalSeconds: Int` (default: 60)
-  - `deviceId: String` (auto-generated UUID on first run)
+  - `checkInIntervalSeconds: Int` (default: 60, constrained 10-300)
+  - `deviceId: String` (auto-generated "android_XXXXXXXX" on first run)
+  - `autoStartOnBoot: Boolean` (default: true)
+  - `serviceEnabled: Boolean` (tracks if service was running)
+  - Validation methods: `isValidServerUrl()`, `isValidMacAddress()`
+  - `resetToDefaults()` method
+  - 10 unit tests (SettingsManagerTest.kt)
+
+- [x] **(Android) Integrate SettingsManager into RelayService**
+  - Service uses settings for server URL, oximeter MAC, device ID
+  - Check-in interval is configurable from settings
+  - `serviceEnabled` persisted on start/stop for reboot recovery
+  - Public accessor: `getSettings()`
+
+- [x] **(Android) Integrate SettingsManager into MainActivity**
+  - Server URL displayed from settings
+  - Device MAC displayed from settings
+  - Settings initialized on app start
 
 ---
 
@@ -318,25 +337,33 @@ These endpoints are required before the Android app can function.
 
 ### 2.1 Local Queue (Android)
 
-- [ ] **(Android) Create ReadingQueue.kt**
-  - SQLite database helper
+- [x] **(Android) Create ReadingQueue.kt**
+  - SQLiteOpenHelper subclass for database management
   - Table: `queued_readings(id, spo2, heart_rate, battery, timestamp, created_at)`
-  - `enqueue(reading: OxiReading)`
-  - `peek(limit: Int): List<QueuedReading>`
-  - `remove(ids: List<Long>)`
-  - `count(): Int`
-  - `clear()`
+  - `enqueue(reading: OxiReading): Long` - add reading, returns row ID
+  - `peek(limit: Int): List<QueuedReading>` - get oldest readings
+  - `remove(ids: List<Long>): Int` - remove by IDs
+  - `remove(id: Long): Boolean` - remove single reading
+  - `count(): Int` - queue size
+  - `isEmpty(): Boolean` - check if empty
+  - `clear(): Int` - remove all readings
+  - `pruneExpired(): Int` - remove readings older than 24 hours
+  - `getStats(): QueueStats` - queue statistics
+  - Max queue size: 10,000 readings (auto-prunes oldest)
+  - Data classes: `QueuedReading`, `QueueStats`
 
-- [ ] **(Android) Create database schema**
+- [x] **(Android) Create database schema**
   - Database name: "o2relay.db"
   - Version: 1
-  - Handle database upgrades
+  - SQLite table with proper indexes
+  - Database closed properly in service onDestroy
 
-- [ ] **(Android) QUEUING state implementation**
+- [x] **(Android) QUEUING state implementation**
   - On Pi unreachable in CONNECTED state → transition to QUEUING
-  - Queue readings locally
+  - Queue readings locally via `readingQueue.enqueue()`
   - Retry Pi connection every 10 seconds
-  - On Pi reachable → flush queue, transition back to CONNECTED
+  - On Pi reachable → flush queue via batch upload, transition to CONNECTED
+  - Status updates to UI with queue size
 
 ### 2.2 Batch Upload (Pi + Android)
 
@@ -346,48 +373,108 @@ These endpoints are required before the Android app can function.
   - Reject readings older than 24 hours
   - Return: `{ "status": "ok", "accepted": N, "rejected": M }`
 
-- [ ] **(Android) Implement postBatch()**
-  - POST `/api/relay/batch`
+- [x] **(Android) Implement postBatch()**
+  - POST `/api/relay/batch` (implemented in Phase 1.4)
   - Send up to 100 readings at a time
-  - On success, remove from local queue
-  - Handle partial success
+  - Returns `BatchResponse?` with accepted/rejected counts
+  - 3 unit tests in ApiClientTest.kt
 
-- [ ] **(Android) Queue flush logic**
-  - When transitioning QUEUING → CONNECTED
-  - Batch upload all queued readings
-  - Continue normal relay after flush
+- [x] **(Android) Queue flush logic**
+  - `flushQueue()` method in RelayService
+  - Prunes expired readings before upload
+  - Processes in batches of 100
+  - Removes successfully sent readings from queue
+  - Tracks totalSent/totalFailed statistics
+  - Called when transitioning QUEUING → CONNECTED
 
 ### 2.3 Auto-Reconnect (Android)
 
-- [ ] **(Android) BLE reconnect logic**
-  - On disconnect in CONNECTED state, attempt reconnect
-  - Exponential backoff: 5s, 10s, 20s, 30s
-  - Max 3 attempts before transitioning to check Pi status
-  - Reset backoff on successful connection
+- [x] **(Android) BLE reconnect logic**
+  - On disconnect in CONNECTED/QUEUING state, increment reconnect attempts
+  - Exponential backoff: 5s, 10s, 20s, 30s (RECONNECT_BACKOFF_MS array)
+  - Max 4 attempts before checking Pi status
+  - If Pi still needs relay, continue trying with max backoff
+  - If Pi has readings, go DORMANT
+  - `scheduleReconnect()` - posts delayed runnable with backoff
+  - `resetReconnectTracking()` - called on successful BLE connection
+  - Status updates show "Reconnecting in Xs..."
 
-- [ ] **(Android) Network reconnect logic**
-  - On network error, retry with backoff
-  - Transition to QUEUING after 3 failures
-  - Monitor network state changes
-  - Auto-retry when network returns
+- [x] **(Android) Network error tracking**
+  - `consecutiveNetworkFailures` counter tracks failed Pi posts
+  - Reset to 0 on successful post
+  - Logged for debugging ("consecutive failures: N")
+  - Immediate transition to QUEUING on first failure (queue locally ASAP)
+  - Queue flush when Pi becomes reachable again
 
 ### 2.4 Boot Receiver (Android)
 
-- [ ] **(Android) Create BootReceiver.kt**
-  - Extend `BroadcastReceiver`
-  - Listen for `BOOT_COMPLETED`
-  - Start RelayService if it was running before reboot
-  - Use `SettingsManager` to check if service should auto-start
+- [x] **(Android) Create BootReceiver.kt**
+  - Extends `BroadcastReceiver`
+  - Listens for `BOOT_COMPLETED` intent
+  - Checks `autoStartOnBoot` setting (must be true)
+  - Checks `serviceEnabled` setting (service was running before reboot)
+  - Checks BLE permissions before starting
+  - Starts RelayService via `ContextCompat.startForegroundService()`
+  - Comprehensive logging for debugging boot issues
 
-- [ ] **(Android) Add to manifest**
-  - Receiver declaration
-  - Intent filter for BOOT_COMPLETED
-  - Add RECEIVE_BOOT_COMPLETED permission
+- [x] **(Android) Add to manifest**
+  - Receiver declaration with `exported="false"`
+  - Intent filter for `android.intent.action.BOOT_COMPLETED`
+  - `RECEIVE_BOOT_COMPLETED` permission (was already in manifest)
 
-- [ ] **(Android) Service auto-start setting**
-  - Add `autoStartOnBoot: Boolean` to SettingsManager
+- [x] **(Android) Service auto-start setting**
+  - `autoStartOnBoot: Boolean` in SettingsManager (added in Phase 1.7)
+  - `serviceEnabled: Boolean` tracks if service was running
   - Default: true
-  - UI toggle in settings
+  - UI toggle in settings (Phase 3)
+
+### 2.5 API Authentication (Android)
+
+- [x] **(Android) Add auth token storage to SettingsManager**
+  - `authToken: String?` - API bearer token
+  - `authTokenExpires: String?` - ISO timestamp of token expiration
+  - `authUsername: String?` - logged-in username
+  - `hasValidToken(): Boolean` - checks token exists and not expired
+  - `saveAuth(token, expiresAt, username)` - save after successful login
+  - `clearAuth()` - logout, clear all auth data
+
+- [x] **(Android) Add login method to ApiClient**
+  - POST `/api/login` with username, password, device_name
+  - `LoginRequest` data class with @SerializedName annotations
+  - `LoginResponse` data class (success, token, expiresAt, error)
+  - Auto-sets `authToken` property on successful login
+  - Returns `LoginResponse?` (null on network error)
+
+- [x] **(Android) Add Bearer token to API requests**
+  - `addAuthHeader()` extension function on Request.Builder
+  - Adds `Authorization: Bearer <token>` header if token is set
+  - Applied to: `getRelayStatus()`, `postReading()`, `postBatch()`, `getAppVersion()`
+
+- [x] **(Android) Update MainActivity for login flow**
+  - Check `hasValidToken()` before starting service
+  - Show login dialog if no valid token
+  - `dialog_login.xml` layout with username/password fields
+  - `performLogin()` coroutine calls `apiClient.login()`
+  - Saves token to SettingsManager on success
+  - Auth status display in footer (clickable)
+  - Long-press to logout with confirmation
+
+- [x] **(Android) Update RelayService to load auth token**
+  - Load token from SettingsManager in `onCreate()`
+  - Set `apiClient.authToken` if valid token exists
+  - Log warning if no valid token (API calls may fail)
+
+### 2.6 Test Mode (Android)
+
+- [x] **(Android) Add test mode to SettingsManager**
+  - `testMode: Boolean` - when true, uses test server URL
+  - `TEST_SERVER_URL = "http://10.0.2.2:5000"` (host localhost from Android emulator)
+  - `getEffectiveServerUrl()` - returns test or production URL
+
+- [x] **(Android) Test mode toggle in MainActivity**
+  - Long-press on server URL to toggle test mode
+  - Toast notification shows new mode and URL
+  - Service restart required to apply change
 
 ---
 

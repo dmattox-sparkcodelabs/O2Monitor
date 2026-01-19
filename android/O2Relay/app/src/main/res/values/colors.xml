@@ -1,24 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary colors -->
-    <color name="primary">#1976D2</color>
-    <color name="primary_dark">#1565C0</color>
-    <color name="primary_light">#42A5F5</color>
+    <!-- Primary colors matching Pi dashboard -->
+    <color name="primary">#2196F3</color>
+    <color name="primary_dark">#1976D2</color>
+    <color name="primary_light">#BBDEFB</color>
     <color name="accent">#FF5722</color>
 
-    <!-- Status colors -->
-    <color name="status_dormant">#607D8B</color>
+    <!-- Status colors (Pi dashboard style) -->
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    <color name="danger">#f44336</color>
+    <color name="info">#00BCD4</color>
+    <color name="muted">#9E9E9E</color>
+
+    <!-- State banner colors -->
+    <color name="status_dormant">#2196F3</color>
     <color name="status_scanning">#FF9800</color>
     <color name="status_connected">#4CAF50</color>
-    <color name="status_queuing">#F44336</color>
+    <color name="status_queuing">#FF9800</color>
+    <color name="status_stopped">#9E9E9E</color>
+
+    <!-- Vitals colors -->
+    <color name="spo2_color">#2196F3</color>
+    <color name="spo2_normal">#4CAF50</color>
+    <color name="spo2_low">#f44336</color>
+    <color name="hr_color">#f44336</color>
+    <color name="hr_normal">#f44336</color>
+    <color name="error">#f44336</color>
 
     <!-- Background -->
-    <color name="background">#FAFAFA</color>
+    <color name="background">#f5f5f5</color>
     <color name="surface">#FFFFFF</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="dark_background">#333333</color>
 
     <!-- Text -->
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
+    <color name="text_on_dark">#FFFFFF</color>
 
     <!-- Standard colors -->
     <color name="black">#FF000000</color>

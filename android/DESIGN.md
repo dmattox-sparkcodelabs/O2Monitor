@@ -621,9 +621,21 @@ Store in `src/web/static/app/version.json`:
 
 ### Authentication
 
-- Phone uses same auth as web UI (session cookie)
-- Initial setup: User logs in via app, cookie stored
-- Or: Generate long-lived API token for phone
+- Phone uses Bearer token authentication (30-day validity)
+- User logs in via in-app dialog (username/password)
+- POST `/api/login` returns token and expiration timestamp
+- Token stored in SharedPreferences (`authToken`, `authTokenExpires`, `authUsername`)
+- All API requests include `Authorization: Bearer <token>` header
+- Token checked on service start - login dialog shown if expired
+- Logout clears stored token
+
+**Login Flow:**
+1. User taps "Start Service" button
+2. If no valid token, login dialog is shown
+3. User enters credentials (same as web UI)
+4. App calls POST `/api/login` with username, password, device_name
+5. On success, token saved and service starts
+6. Token reused for 30 days until expiration
 
 ### Network Security
 
@@ -732,7 +744,7 @@ Store in `src/web/static/app/version.json`:
 | Queue on phone? | **Yes**. SQLite-backed queue for WiFi outages. |
 | Battery impact? | **Acceptable**. Dad charges religiously. |
 | LTE support? | **Yes, via WireGuard**. Dad's phone already can be added. |
-| Auth mechanism? | **Session cookie** (same as web UI) for simplicity. |
+| Auth mechanism? | **Bearer token** (30-day validity). Login dialog prompts for credentials on first run or token expiration. |
 | When does phone stop relaying? | **On BLE disconnect only**. Phone decides, not Pi. |
 
 ---

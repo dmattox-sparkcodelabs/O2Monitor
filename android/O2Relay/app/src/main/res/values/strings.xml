@@ -12,6 +12,11 @@
     <string name="status_queuing">Status: QUEUING</string>
     <string name="status_queuing_desc">Pi unreachable, storing locally</string>
 
+    <!-- Reading labels -->
+    <string name="label_spo2">SpO2</string>
+    <string name="label_heart_rate">Heart Rate</string>
+    <string name="label_battery">Battery</string>
+
     <!-- Check-in info -->
     <string name="last_check_in_never">Last check-in: Never</string>
     <string name="last_check_in_format">Last check-in: %1$s ago</string>
