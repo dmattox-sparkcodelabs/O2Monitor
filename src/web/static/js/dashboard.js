@@ -31,6 +31,8 @@
         hrStatus: document.getElementById('hr-status'),
         avapsStatus: document.getElementById('avaps-status'),
         avapsPower: document.getElementById('avaps-power'),
+        bleIndicator: document.getElementById('ble-indicator'),
+        bleStatus: document.getElementById('ble-status'),
         batteryIndicator: document.getElementById('battery-indicator'),
         batteryValue: document.getElementById('battery-value'),
         lastReading: document.getElementById('last-reading'),
@@ -39,12 +41,7 @@
         silenceRemaining: document.getElementById('silence-remaining'),
         testAlertBtn: document.getElementById('test-alert-btn'),
         silenceBtn: document.getElementById('silence-btn'),
-        unsilenceBtn: document.getElementById('unsilence-btn'),
-        // Adapter elements
-        adapterHallwayIndicator: document.getElementById('adapter-hallway-indicator'),
-        adapterHallwayStatus: document.getElementById('adapter-hallway-status'),
-        adapterBedroomIndicator: document.getElementById('adapter-bedroom-indicator'),
-        adapterBedroomStatus: document.getElementById('adapter-bedroom-status')
+        unsilenceBtn: document.getElementById('unsilence-btn')
     };
 
     // State class to CSS class mapping
@@ -436,9 +433,6 @@
             const data = await response.json();
             console.log('Got data:', data);
             updateUI(data);
-
-            // Also update adapter status
-            updateAdapters();
         } catch (error) {
             console.error('Error updating dashboard:', error);
         }
@@ -501,8 +495,16 @@
             }
         }
 
-        // BLE status - now handled by adapter cards
+        // BLE connection status
         if (data.ble) {
+            const connected = data.ble.connected;
+            if (elements.bleIndicator) {
+                elements.bleIndicator.className = 'status-indicator ' + (connected ? 'connected' : 'offline');
+            }
+            if (elements.bleStatus) {
+                elements.bleStatus.textContent = connected ? 'Connected' : 'Disconnected';
+            }
+
             // Battery
             if (data.ble.battery_level !== null && data.ble.battery_level !== undefined) {
                 elements.batteryValue.textContent = data.ble.battery_level + '%';
@@ -671,40 +673,6 @@
         } catch (error) {
             console.error('Error unsilencing alerts:', error);
             alert('Failed to unsilence alerts');
-        }
-    }
-
-    // Update adapter status
-    async function updateAdapters() {
-        try {
-            const response = await apiFetch('/api/adapters');
-            if (!response.ok) throw new Error('Failed to fetch adapter status');
-
-            const data = await response.json();
-
-            // Update each adapter's display
-            if (data.adapters) {
-                data.adapters.forEach(adapter => {
-                    let indicatorEl, statusEl;
-
-                    if (adapter.id === 'hallway') {
-                        indicatorEl = elements.adapterHallwayIndicator;
-                        statusEl = elements.adapterHallwayStatus;
-                    } else if (adapter.id === 'bedroom') {
-                        indicatorEl = elements.adapterBedroomIndicator;
-                        statusEl = elements.adapterBedroomStatus;
-                    }
-
-                    if (indicatorEl && statusEl) {
-                        // Update indicator class
-                        indicatorEl.className = 'adapter-indicator ' + adapter.status;
-                        // Update status text
-                        statusEl.textContent = adapter.status_text || adapter.status;
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('Error updating adapters:', error);
         }
     }
 

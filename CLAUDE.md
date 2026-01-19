@@ -26,6 +26,36 @@ Credentials are stored in `.secrets.md` (gitignored). Contains:
 
 - Repo: https://github.com/dmattox-sparkcodelabs/O2Monitor
 
+## Remote Development (from WSL)
+
+The Pi (O2Monitor) is at `10.6.0.7`. SSH key auth is set up for passwordless access.
+
+**SSH Alias** (in `~/.ssh/config`):
+```
+Host o2pi
+    HostName 10.6.0.7
+    User dmattox
+```
+
+**SSHFS Mount** - Pi's project is mounted locally for direct file access:
+- Local: `/home/dmatt/projects/RemoteOxygen/O2Monitor/`
+- Remote: `dmattox@10.6.0.7:/home/dmattox/projects/O2Monitor`
+
+If mount is stale or disconnected:
+```bash
+# Unmount if stuck
+fusermount -u /home/dmatt/projects/RemoteOxygen/O2Monitor
+
+# Remount
+sshfs dmattox@10.6.0.7:/home/dmattox/projects/O2Monitor /home/dmatt/projects/RemoteOxygen/O2Monitor -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3
+```
+
+**Service commands** (via SSH):
+```bash
+ssh o2pi "sudo systemctl restart o2monitor"
+ssh o2pi "sudo journalctl -u o2monitor -n 50 --no-pager"
+```
+
 ## Running the App
 
 **First time only** - create acknowledgment file:

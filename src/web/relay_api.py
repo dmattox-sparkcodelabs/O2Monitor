@@ -54,12 +54,16 @@ def get_relay_status():
     """Check if the Pi needs relay help from the Android app.
 
     Returns:
-        JSON with:
+        JSON with fields matching Android app expectations:
+        - timestamp: str - Current Pi time (ISO format)
+        - last_reading_age_seconds: int|null - Seconds since last valid reading
+        - source: str - Current data source ('BLE' or 'Mobile')
         - needs_relay: bool - True if Pi wants the phone to relay readings
-        - ble_connected: bool - Current BLE connection state
-        - seconds_since_reading: int|null - Seconds since last valid reading
+        - pi_ble_connected: bool - Current BLE connection state
         - relay_active: bool - True if Pi is currently receiving relay data
-        - pi_timestamp: str - Current Pi time (for clock sync check)
+        - current_vitals: object|null - Latest vitals for display
+        - therapy_active: bool - True if AVAPS therapy is on
+        - power_watts: float|null - Current AVAPS power draw
 
     The phone should start relaying when needs_relay is True and stop
     when it becomes False.
@@ -70,9 +74,9 @@ def get_relay_status():
     status = g.state_machine.get_status()
 
     # Calculate seconds since last reading
-    seconds_since_reading = None
+    last_reading_age_seconds = None
     if status.ble_status.last_reading_time:
-        seconds_since_reading = int(
+        last_reading_age_seconds = int(
             (datetime.now() - status.ble_status.last_reading_time).total_seconds()
         )
 
@@ -83,7 +87,7 @@ def get_relay_status():
     late_threshold = g.config.bluetooth.late_reading_seconds if g.config else 30
     needs_relay = (
         not status.ble_status.connected or
-        (seconds_since_reading is not None and seconds_since_reading > late_threshold)
+        (last_reading_age_seconds is not None and last_reading_age_seconds > late_threshold)
     )
 
     # Check if relay is currently active (receiving data from phone)
@@ -95,13 +99,43 @@ def get_relay_status():
         relay_age = (datetime.now() - last_relay_time).total_seconds()
         relay_active = relay_age < 30
 
+    # Determine current data source
+    if relay_active:
+        source = 'Mobile'
+    elif status.ble_status.connected:
+        source = 'BLE'
+    else:
+        source = 'None'
+
+    # Build current vitals for display on the phone
+    current_vitals = None
+    reading = status.current_reading
+    if reading:
+        current_vitals = {
+            'spo2': reading.spo2,
+            'heart_rate': reading.heart_rate,
+            'battery_level': reading.battery_level,
+            'is_valid': reading.is_valid,
+            'timestamp': reading.timestamp.isoformat() if reading.timestamp else None,
+            'source': source,
+        }
+
+    # Get therapy (AVAPS) status and power
+    therapy_active = status.avaps_state == AVAPSState.ON
+    power_watts = status.avaps_power_watts
+
     return jsonify({
+        # Fields expected by Android app
+        'timestamp': datetime.now().isoformat(),
+        'last_reading_age_seconds': last_reading_age_seconds,
+        'source': source,
         'needs_relay': needs_relay,
-        'ble_connected': status.ble_status.connected,
-        'seconds_since_reading': seconds_since_reading,
+        'pi_ble_connected': status.ble_status.connected,
+        # Additional fields
         'relay_active': relay_active,
-        'pi_timestamp': datetime.now().isoformat(),
-        'late_reading_threshold_seconds': late_threshold,
+        'current_vitals': current_vitals,
+        'therapy_active': therapy_active,
+        'power_watts': power_watts,
     })
 
 

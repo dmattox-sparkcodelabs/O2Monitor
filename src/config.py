@@ -72,25 +72,12 @@ class BLEThresholdConfig:
 
 
 @dataclass
-class BluetoothAdapterConfig:
-    """Configuration for a single Bluetooth adapter."""
-    name: str = ""
-    mac_address: str = ""
-
-
-@dataclass
 class BluetoothConfig:
-    """Bluetooth adapter and timing configuration."""
-    # Adapter definitions
-    adapters: List[BluetoothAdapterConfig] = field(default_factory=list)
+    """Bluetooth timing configuration."""
     # How often to poll for readings (seconds)
     read_interval_seconds: int = 5
     # Reading is "late" after this many seconds
     late_reading_seconds: int = 30
-    # Switch to other adapter after this many minutes of no readings
-    switch_timeout_minutes: int = 5
-    # When in switching mode, try other adapter every X minutes
-    bounce_interval_minutes: int = 1
     # Delay before respawning worker when device not found (seconds)
     respawn_delay_seconds: int = 15
     # Restart Bluetooth service after this many minutes of consecutive failures (0 = disabled)
@@ -216,11 +203,6 @@ class AlertsConfig:
     battery_critical: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
         enabled=True, threshold=10, duration_seconds=0,
         severity="critical", bypass_on_therapy=False
-    ))
-    # Adapter disconnect - fires when a Bluetooth adapter is unplugged
-    adapter_disconnect: AlertItemConfig = field(default_factory=lambda: AlertItemConfig(
-        enabled=True, threshold=0, duration_seconds=0,
-        severity="warning", bypass_on_therapy=False, resend_interval_seconds=3600
     ))
     # Sleep hours for no_therapy_at_night alerts
     sleep_hours: SleepHoursConfig = field(default_factory=SleepHoursConfig)
@@ -424,13 +406,6 @@ def _dict_to_dataclass(cls, data: Dict[str, Any]):
                 for u in value
             ]
 
-        # Handle List[BluetoothAdapterConfig] special case
-        elif field_name == 'adapters' and isinstance(value, list):
-            kwargs[field_name] = [
-                _dict_to_dataclass(BluetoothAdapterConfig, a) if isinstance(a, dict) else a
-                for a in value
-            ]
-
         # Handle Optional types
         elif hasattr(field_type, '__origin__') and field_type.__origin__ is type(None):
             kwargs[field_name] = value
@@ -443,7 +418,7 @@ def _dict_to_dataclass(cls, data: Dict[str, Any]):
         alert_fields = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                         'hr_high', 'hr_low', 'disconnect',
                         'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                        'battery_warning', 'battery_critical', 'adapter_disconnect']
+                        'battery_warning', 'battery_critical']
         for alert_name in alert_fields:
             if alert_name in data and isinstance(data[alert_name], dict):
                 kwargs[alert_name] = _dict_to_dataclass(AlertItemConfig, data[alert_name])
@@ -628,7 +603,6 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
         'no_therapy_at_night_high': _save_alert_item(config.alerts.no_therapy_at_night_high),
         'battery_warning': _save_alert_item(config.alerts.battery_warning),
         'battery_critical': _save_alert_item(config.alerts.battery_critical),
-        'adapter_disconnect': _save_alert_item(config.alerts.adapter_disconnect),
         'sleep_hours': {
             'start': config.alerts.sleep_hours.start,
             'end': config.alerts.sleep_hours.end,
@@ -655,14 +629,8 @@ def save_config(config: Config, config_path: str = "config.yaml") -> None:
 
     # Save bluetooth configuration
     existing['bluetooth'] = {
-        'adapters': [
-            {'name': a.name, 'mac_address': a.mac_address}
-            for a in config.bluetooth.adapters
-        ],
         'read_interval_seconds': config.bluetooth.read_interval_seconds,
         'late_reading_seconds': config.bluetooth.late_reading_seconds,
-        'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
-        'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
         'respawn_delay_seconds': config.bluetooth.respawn_delay_seconds,
         'bt_restart_threshold_minutes': config.bluetooth.bt_restart_threshold_minutes,
     }

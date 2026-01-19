@@ -43,19 +43,10 @@
 
     <!-- Status Indicators -->
     <div class="status-grid">
-        <div class="status-item adapter-card">
-            <div class="adapter-row">
-                <div class="adapter-item" id="adapter-hallway">
-                    <span class="adapter-indicator offline" id="adapter-hallway-indicator"></span>
-                    <span class="status-label">Hallway</span>
-                    <span class="status-value" id="adapter-hallway-status">--</span>
-                </div>
-                <div class="adapter-item" id="adapter-bedroom">
-                    <span class="adapter-indicator offline" id="adapter-bedroom-indicator"></span>
-                    <span class="status-label">Bedroom</span>
-                    <span class="status-value" id="adapter-bedroom-status">--</span>
-                </div>
-            </div>
+        <div class="status-item">
+            <span class="status-indicator offline" id="ble-indicator"></span>
+            <span class="status-label">Bluetooth</span>
+            <span class="status-value" id="ble-status">--</span>
         </div>
         <div class="status-item">
             <span class="status-indicator" id="battery-indicator"></span>
@@ -102,5 +93,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=17"></script>
 {% endblock %}

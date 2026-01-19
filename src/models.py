@@ -81,7 +81,6 @@ class AlertType(Enum):
 
     # Connectivity alerts
     DISCONNECT = "disconnect"          # Lost connection to oximeter (escalating)
-    ADAPTER_DISCONNECT = "adapter_disconnect"  # Bluetooth adapter unplugged (warning)
 
     # Therapy compliance alerts
     NO_THERAPY_AT_NIGHT = "no_therapy_at_night"  # AVAPS off during sleep hours (escalating)

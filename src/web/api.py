@@ -356,7 +356,6 @@ def trigger_test_alert():
         'no_therapy_at_night_high': (AlertType.NO_THERAPY_AT_NIGHT, 'no_therapy_at_night_high'),
         'battery_warning': (AlertType.BATTERY_WARNING, 'battery_warning'),
         'battery_critical': (AlertType.BATTERY_CRITICAL, 'battery_critical'),
-        'adapter_disconnect': (AlertType.ADAPTER_DISCONNECT, 'adapter_disconnect'),
         'test': (AlertType.TEST, None),
     }
 
@@ -388,7 +387,6 @@ def trigger_test_alert():
         'no_therapy_at_night_high': 'TEST: No Therapy at Night (Urgent) - AVAPS still not in use during sleep hours',
         'battery_warning': 'TEST: Battery Warning - Oximeter battery low',
         'battery_critical': 'TEST: Battery Critical - Oximeter battery very low',
-        'adapter_disconnect': 'TEST: Adapter Disconnect - Bluetooth adapter unplugged',
         'test': 'Test alert triggered from web dashboard',
     }
 
@@ -517,7 +515,6 @@ def get_config():
             'no_therapy_at_night_high': _alert_to_dict(config.alerts.no_therapy_at_night_high),
             'battery_warning': _alert_to_dict(config.alerts.battery_warning),
             'battery_critical': _alert_to_dict(config.alerts.battery_critical),
-            'adapter_disconnect': _alert_to_dict(config.alerts.adapter_disconnect),
             'sleep_hours': {
                 'start': config.alerts.sleep_hours.start,
                 'end': config.alerts.sleep_hours.end,
@@ -556,14 +553,8 @@ def get_config():
             },
         },
         'bluetooth': {
-            'adapters': [
-                {'name': a.name, 'mac_address': a.mac_address}
-                for a in config.bluetooth.adapters
-            ],
             'read_interval_seconds': config.bluetooth.read_interval_seconds,
             'late_reading_seconds': config.bluetooth.late_reading_seconds,
-            'switch_timeout_minutes': config.bluetooth.switch_timeout_minutes,
-            'bounce_interval_minutes': config.bluetooth.bounce_interval_minutes,
             'respawn_delay_seconds': config.bluetooth.respawn_delay_seconds,
             'bt_restart_threshold_minutes': config.bluetooth.bt_restart_threshold_minutes,
         },
@@ -615,7 +606,7 @@ def update_config():
         alert_types = ['spo2_critical_off_therapy', 'spo2_critical_on_therapy', 'spo2_warning',
                        'hr_high', 'hr_low', 'disconnect',
                        'no_therapy_at_night_info', 'no_therapy_at_night_high',
-                       'battery_warning', 'battery_critical', 'adapter_disconnect']
+                       'battery_warning', 'battery_critical']
         for alert_name in alert_types:
             if alert_name in alerts:
                 alert_config = getattr(config.alerts, alert_name)
@@ -676,24 +667,12 @@ def update_config():
     # Update bluetooth
     if 'bluetooth' in data:
         bt = data['bluetooth']
-        # Update adapter names (preserving MAC addresses)
-        if 'adapter_names' in bt and isinstance(bt['adapter_names'], list):
-            for i, name in enumerate(bt['adapter_names']):
-                if i < len(config.bluetooth.adapters):
-                    config.bluetooth.adapters[i].name = name
-                    updated.append(f'bluetooth.adapters[{i}].name')
         if 'read_interval_seconds' in bt:
             config.bluetooth.read_interval_seconds = int(bt['read_interval_seconds'])
             updated.append('bluetooth.read_interval_seconds')
         if 'late_reading_seconds' in bt:
             config.bluetooth.late_reading_seconds = int(bt['late_reading_seconds'])
             updated.append('bluetooth.late_reading_seconds')
-        if 'switch_timeout_minutes' in bt:
-            config.bluetooth.switch_timeout_minutes = int(bt['switch_timeout_minutes'])
-            updated.append('bluetooth.switch_timeout_minutes')
-        if 'bounce_interval_minutes' in bt:
-            config.bluetooth.bounce_interval_minutes = int(bt['bounce_interval_minutes'])
-            updated.append('bluetooth.bounce_interval_minutes')
         if 'respawn_delay_seconds' in bt:
             config.bluetooth.respawn_delay_seconds = int(bt['respawn_delay_seconds'])
             updated.append('bluetooth.respawn_delay_seconds')
@@ -834,205 +813,3 @@ async def _discover_plugs():
         })
 
     return devices
-
-
-# ==================== Bluetooth Adapters ====================
-
-
-def _get_adapter_config_map():
-    """Build adapter config map from config file."""
-    config = g.config
-    adapter_map = {}
-    if config and config.bluetooth and config.bluetooth.adapters:
-        for adapter in config.bluetooth.adapters:
-            if adapter.mac_address:
-                adapter_map[adapter.mac_address.upper()] = {
-                    'name': adapter.name,
-                    'id': adapter.name.lower().replace(' ', '_'),
-                }
-    return adapter_map
-
-
-@api_bp.route('/adapters')
-@api_login_required
-def get_adapters():
-    """Get Bluetooth adapter status."""
-    import subprocess
-    import re
-
-    adapters = []
-    adapter_config = _get_adapter_config_map()
-    found_macs = set()
-
-    try:
-        # Run hciconfig to get adapter info
-        result = subprocess.run(
-            ['hciconfig', '-a'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        if result.returncode != 0:
-            return jsonify({'error': 'Failed to get adapter info'}), 500
-
-        # Parse hciconfig output
-        current_adapter = None
-        for line in result.stdout.split('\n'):
-            # New adapter line: "hci0:  Type: Primary  Bus: USB"
-            hci_match = re.match(r'^(hci\d+):', line)
-            if hci_match:
-                if current_adapter:
-                    adapters.append(current_adapter)
-                current_adapter = {
-                    'hci': hci_match.group(1),
-                    'mac': None,
-                    'up': False,
-                    'running': False,
-                    'name': 'Unknown',
-                    'id': 'unknown',
-                    'status': 'offline',
-                    'detected': True,
-                }
-                # Check for UP RUNNING on same line
-                if 'UP' in line:
-                    current_adapter['up'] = True
-                if 'RUNNING' in line:
-                    current_adapter['running'] = True
-
-            elif current_adapter:
-                # BD Address line
-                bd_match = re.search(r'BD Address:\s*([0-9A-Fa-f:]+)', line)
-                if bd_match:
-                    mac = bd_match.group(1).upper()
-                    current_adapter['mac'] = mac
-                    found_macs.add(mac)
-                    # Look up adapter name from config
-                    if mac in adapter_config:
-                        current_adapter['name'] = adapter_config[mac]['name']
-                        current_adapter['id'] = adapter_config[mac]['id']
-
-                # Check UP RUNNING status on separate line
-                if 'UP RUNNING' in line:
-                    current_adapter['up'] = True
-                    current_adapter['running'] = True
-                elif 'UP' in line and 'DOWN' not in line:
-                    current_adapter['up'] = True
-                elif 'DOWN' in line:
-                    current_adapter['up'] = False
-
-        # Don't forget the last adapter
-        if current_adapter:
-            adapters.append(current_adapter)
-
-        # Add configured adapters that weren't detected (unplugged)
-        for mac, info in adapter_config.items():
-            if mac not in found_macs:
-                adapters.append({
-                    'hci': None,
-                    'mac': mac,
-                    'up': False,
-                    'running': False,
-                    'name': info['name'],
-                    'id': info['id'],
-                    'status': 'offline',
-                    'detected': False,
-                })
-
-        # Determine status for each adapter
-        # Check if BLE reader is connected and which adapter it's using
-        ble_connected = False
-        active_adapter_name = None
-        is_switching_mode = False
-
-        if g.state_machine and g.state_machine.ble_reader:
-            ble_reader = g.state_machine.ble_reader
-            ble_connected = ble_reader.is_connected
-            # Get current adapter name from reader
-            if hasattr(ble_reader, 'current_adapter_name'):
-                active_adapter_name = ble_reader.current_adapter_name
-            # Check if in switching mode
-            if hasattr(ble_reader, '_adapter_manager') and ble_reader._adapter_manager:
-                is_switching_mode = ble_reader._adapter_manager.is_switching_mode
-
-        for adapter in adapters:
-            is_active_adapter = (adapter['name'] == active_adapter_name)
-            is_detected = adapter.get('detected', False)
-
-            if not is_detected:
-                # Adapter configured but not detected (unplugged?)
-                adapter['status'] = 'offline'
-                adapter['status_text'] = 'Not detected'
-            elif is_active_adapter and ble_connected:
-                adapter['status'] = 'active'
-                adapter['status_text'] = 'Connected'
-            elif is_active_adapter and is_switching_mode:
-                adapter['status'] = 'connecting'
-                adapter['status_text'] = 'Trying...'
-            elif is_active_adapter:
-                adapter['status'] = 'connecting'
-                adapter['status_text'] = 'Connecting...'
-            else:
-                # Not the active adapter - it's on standby (intentionally down)
-                adapter['status'] = 'standby'
-                adapter['status_text'] = 'Standby'
-
-        return jsonify({
-            'adapters': adapters,
-            'ble_connected': ble_connected,
-            'is_switching_mode': is_switching_mode,
-            'active_adapter': active_adapter_name,
-        })
-
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Timeout getting adapter info'}), 500
-    except Exception as e:
-        logger.error(f"Error getting adapter status: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@api_bp.route('/adapters/switch', methods=['POST'])
-@api_login_required
-def switch_adapter():
-    """Switch to a different Bluetooth adapter."""
-    if not g.state_machine or not g.state_machine.ble_reader:
-        return jsonify({'error': 'BLE reader not available'}), 503
-
-    ble_reader = g.state_machine.ble_reader
-
-    # Get target adapter name from request (optional)
-    data = request.get_json() or {}
-    target_name = data.get('adapter_name')
-
-    try:
-        if target_name:
-            # Switch to specific adapter by name
-            if hasattr(ble_reader, '_adapter_manager') and ble_reader._adapter_manager:
-                adapter_manager = ble_reader._adapter_manager
-                # Find adapter by name
-                target_adapter = None
-                for adapter in adapter_manager.adapters:
-                    if adapter.name.lower() == target_name.lower():
-                        target_adapter = adapter
-                        break
-
-                if not target_adapter:
-                    return jsonify({'error': f'Adapter "{target_name}" not found'}), 404
-
-                # Switch to target adapter
-                adapter_manager.switch_to_adapter(target_adapter)
-                ble_reader._switch_adapter()
-                logger.info(f"Switched to adapter {target_name} by {session.get('user')}")
-                return jsonify({'success': True, 'adapter': target_name})
-            else:
-                return jsonify({'error': 'Adapter manager not available'}), 503
-        else:
-            # Switch to next adapter
-            ble_reader._switch_adapter()
-            new_adapter = ble_reader.current_adapter_name
-            logger.info(f"Switched to next adapter ({new_adapter}) by {session.get('user')}")
-            return jsonify({'success': True, 'adapter': new_adapter})
-
-    except Exception as e:
-        logger.error(f"Error switching adapter: {e}")
-        return jsonify({'error': str(e)}), 500
