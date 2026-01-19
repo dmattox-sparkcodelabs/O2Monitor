@@ -89,6 +89,9 @@ class AlertType(Enum):
     BATTERY_WARNING = "battery_warning"    # Battery getting low (warning)
     BATTERY_CRITICAL = "battery_critical"  # Battery critically low (high)
 
+    # Vision alerts
+    VISION_SLEEP_NO_MASK = "vision_sleep_no_mask"  # Eyes closed without mask (escalating)
+
     # System alerts
     SYSTEM_ERROR = "system_error"      # Internal error
     TEST = "test"                      # Test alert

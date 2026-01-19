@@ -47,3 +47,7 @@ config.yaml
 # Acknowledgment file (each user must create their own)
 ACKNOWLEDGED_NOT_FOR_MEDICAL_USE.txt
 backups/
+
+# Vision service data (face embeddings, cameras config)
+vision/data/*
+!vision/data/.gitkeep

@@ -32,6 +32,7 @@ O2 Monitor is a Raspberry Pi-based proof of concept that demonstrates integratio
 - Local audio alerts with text-to-speech
 - PagerDuty integration for remote notifications
 - Web-based dashboard
+- **Vision-based sleep monitoring** (detects eyes closed without mask)
 
 ## Quick Start
 
@@ -58,9 +59,28 @@ The application will not start without the acknowledgment file.
 
 Web dashboard available at: `http://<pi-ip>:5000`
 
+## Vision Service
+
+The optional vision service runs on a separate Windows PC with GPU to provide camera-based sleep monitoring. It detects when the target person falls asleep without their AVAPS mask.
+
+**Hardware required:**
+- Windows PC with NVIDIA GPU (tested on RTX 3060)
+- Reolink E1 Pro cameras (or similar with RTSP support)
+
+**Quick start:**
+```bash
+# On Windows PC
+cd vision
+pip install -r requirements.txt
+python -m vision.main --host 0.0.0.0 --port 8100
+```
+
+See [VISION.md](VISION.md) for full documentation.
+
 ## Documentation
 
 - [DESIGN.md](DESIGN.md) - System architecture and design decisions
+- [VISION.md](VISION.md) - Vision service design and API reference
 - [TODO.md](TODO.md) - Implementation checklist and session notes
 - [CLAUDE.md](CLAUDE.md) - Development notes
 

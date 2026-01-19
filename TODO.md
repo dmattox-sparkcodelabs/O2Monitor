@@ -8,7 +8,7 @@
 
 **Project:** O2 Monitoring System for OHS Patient (Proof of Concept)
 **Created:** 2026-01-11
-**Status:** Phase 12 (Multi-Adapter Failover) Complete - System in Production
+**Status:** Phase 14 (Vision Service) Implementation Complete - Hardware Testing Required
 
 ---
 
@@ -781,6 +781,110 @@ The implemented Pi API has minor field name differences from the original design
 - [x] Power thresholds tuned (on: 25.0W, off: 20.0W for actual BiPAP)
 - [x] Internal Bluetooth disabled, dual USB adapters configured
 - [x] systemd service installed and verified working
+
+---
+
+## Phase 14: Vision-Based Sleep Monitoring (NEW)
+
+Vision service to detect when dad falls asleep without AVAPS mask. Runs on Windows PC with RTX 3060 GPU, provides API for Pi to poll.
+
+**Alert Logic:** `IF face_detected AND is_dad AND eyes_closed > 5min AND no_mask → ALERT`
+
+### 14.1 Core Infrastructure
+- [x] Create `vision/` directory structure and `__init__.py` files
+- [x] Implement `vision/config.py` with Pydantic Settings
+- [x] Implement `vision/models/camera.py` (CameraState enum, Camera, DetectionResult, VisionStatus)
+
+### 14.2 Detection Pipeline
+- [x] Implement `vision/detection/face_recognition.py` (InsightFace/ArcFace wrapper)
+- [x] Implement `vision/detection/eye_state.py` (MediaPipe Face Mesh + EAR calculation)
+- [x] Implement `vision/detection/mask_detection.py` (YOLO wrapper with heuristic fallback)
+- [x] Implement `vision/detection/pipeline.py` (DetectionPipeline orchestrator)
+
+### 14.3 Camera Management
+- [x] Implement `vision/capture/rtsp_stream.py` (OpenCV RTSP capture)
+- [x] Implement `vision/capture/camera_manager.py` (state machine + scheduler)
+  - [x] Camera states: IDLE (5 min) → ACTIVE (1 min) → ALERT (1 min)
+  - [x] Staggered scheduling across cameras
+  - [x] Dad detection triggers ACTIVE mode
+  - [x] Eyes closed + no mask > 5 min triggers ALERT
+
+### 14.4 FastAPI Service
+- [x] Implement `vision/api/server.py` (FastAPI app factory with lifespan)
+- [x] Implement API routes:
+  - [x] `GET /health` - Health check
+  - [x] `GET /status` - Overall status (Pi polls this)
+  - [x] `GET /cameras` - List all cameras
+  - [x] `POST /cameras` - Add camera
+  - [x] `GET /cameras/{id}/status` - Single camera status
+  - [x] `GET /cameras/{id}/snapshot` - Current frame as JPEG
+  - [x] `PUT /cameras/{id}` - Update camera
+  - [x] `DELETE /cameras/{id}` - Remove camera
+  - [x] `POST /cameras/{id}/enable` - Enable camera
+  - [x] `POST /cameras/{id}/disable` - Disable camera
+  - [x] `POST /enroll` - Upload dad's face photos
+  - [x] `POST /config` - Update thresholds
+
+### 14.5 Entry Point and Dependencies
+- [x] Implement `vision/main.py` (service entry point)
+- [x] Create `vision/requirements.txt` with pinned dependencies
+- [x] Create `vision/data/.gitkeep` and update `.gitignore`
+
+### 14.6 Pi Integration
+- [x] Implement `src/vision_client.py` (async client for Pi to poll vision service)
+- [x] Update `src/models.py` with `VISION_SLEEP_NO_MASK` alert type
+- [x] Add vision alert config to `config.yaml`
+
+### 14.7 Documentation
+- [x] Create `VISION.md` design document with:
+  - [x] Architecture overview
+  - [x] Camera state machine diagram
+  - [x] API endpoint documentation
+  - [x] Detection pipeline details
+  - [x] Configuration reference
+  - [x] Deployment instructions
+  - [x] Troubleshooting guide
+- [x] Update `README.md` with vision service section
+- [x] Update `.env.example` with vision config vars
+
+### 14.8 Testing
+- [H] Test vision service startup and health endpoint (requires Windows PC with GPU)
+- [H] Test RTSP capture from Reolink cameras (requires cameras on network)
+- [H] Test face enrollment and recognition (requires GPU dependencies)
+- [H] Test eye state detection (EAR calculation) (requires GPU dependencies)
+- [H] Test camera state transitions (requires full setup)
+- [H] Test Pi client polling `/status` (requires running vision service)
+- [H] End-to-end: alert triggers when eyes closed + no mask > 5 min (requires full setup)
+
+### Hardware
+- **Cameras:** TP-Link Tapo C210 (WiFi, native RTSP: `rtsp://user:pass@ip:554/stream1`)
+  - Note: Reolink E1 Pro does NOT have standalone RTSP - requires hub/NVR
+- **Compute:** Windows 11 PC, RTX 3060 12GB (GPU 0), Python 3.10
+
+### Configuration Defaults
+```yaml
+# Detection thresholds
+eyes_closed_alert_seconds: 300    # 5 min
+dad_gone_timeout_seconds: 600     # 10 min
+face_similarity_threshold: 0.6
+ear_closed_threshold: 0.2
+
+# Polling intervals
+idle_poll_seconds: 300            # 5 min
+active_poll_seconds: 60           # 1 min
+
+# Server
+api_host: 0.0.0.0
+api_port: 8100
+```
+
+### Key Dependencies
+- fastapi, uvicorn (web framework)
+- opencv-python (RTSP capture)
+- insightface, onnxruntime-gpu (face recognition)
+- mediapipe (eye landmarks)
+- ultralytics (YOLO mask detection)
+- torch+cu121 (GPU compute)
 
 ---
 
