@@ -54,22 +54,31 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     def force_device_discovery(mac):
         """
         Force BlueZ to find the device by scanning briefly.
-        This repopulates the BlueZ internal cache if the adapter was reset.
+        Removes stale device entry first to clear zombie DBus objects,
+        then repopulates the BlueZ cache via scan.
         """
-        queue.put({"type": "status", "message": "scanning", "mac": mac})
+        queue.put({"type": "status", "message": "cleaning_cache", "mac": mac})
         try:
-            # Run scan for 5 seconds then kill it
-            # Using 'timeout' command to ensure it doesn't hang
+            # 1. Remove stale device to clear zombie DBus objects and GATT cache
+            subprocess.run(
+                f"bluetoothctl remove {mac}",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            time.sleep(1)
+
+            # 2. Re-scan to repopulate BlueZ cache
             subprocess.run(
                 "timeout 5s bash -c 'echo -e \"scan on\" | bluetoothctl'",
                 shell=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            # Small settling time for BlueZ to process advertisements
+            # Settling time for BlueZ to process advertisements
             time.sleep(1)
         except Exception as e:
-            queue.put({"type": "error", "message": f"Scan failed: {e}"})
+            queue.put({"type": "error", "message": f"Clean/Scan failed: {e}"})
 
     try:
         import BLE_GATT
@@ -113,7 +122,19 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     def request_reading():
         """Send command 0x17 to request sensor values."""
         cmd = build_command(0x17)
-        ble.char_write(TX_UUID, cmd)
+        try:
+            ble.char_write(TX_UUID, cmd)
+        except Exception as e:
+            error_str = str(e)
+            if "Not connected" in error_str:
+                queue.put({"type": "error", "message": f"Device disconnected during write: {error_str}"})
+                # Terminate the GLib loop so the worker exits cleanly
+                try:
+                    ble.cleanup()
+                except Exception:
+                    pass
+                return
+            raise
 
     def handle_notification(value):
         """Handle incoming BLE notification."""
@@ -455,6 +476,8 @@ class CheckmeO2Reader:
                     logger.info(f"Connected after {msg.get('attempts')} attempts")
             elif status == "retrying_with_scan":
                 logger.debug(f"Direct connection failed, forcing scan to repopulate cache...")
+            elif status == "cleaning_cache":
+                logger.debug("Removing stale device and rescanning...")
             elif status == "scanning":
                 logger.debug("Scanning for device...")
             elif status == "monitoring":
