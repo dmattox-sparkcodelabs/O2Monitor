@@ -36,6 +36,8 @@ class RelayService : Service() {
         private const val READING_INTERVAL_MS = 5_000L        // 5 seconds
         private const val SCAN_TIMEOUT_MS = 30_000L           // 30 seconds
         private const val PI_RETRY_INTERVAL_MS = 10_000L      // 10 seconds (QUEUING state)
+        private const val READING_WATCHDOG_MS = 30_000L       // 30 seconds without reading = stale BLE
+        private const val SCANNING_WATCHDOG_MS = 60_000L      // 60 seconds max in SCANNING state
 
         // Intent actions
         const val ACTION_START = "com.o2monitor.relay.START"
@@ -75,6 +77,8 @@ class RelayService : Service() {
     private var checkInRunnable: Runnable? = null
     private var readingRunnable: Runnable? = null
     private var piRetryRunnable: Runnable? = null
+    private var readingWatchdogRunnable: Runnable? = null
+    private var scanningWatchdogRunnable: Runnable? = null
 
     // State tracking
     private var lastReading: OxiReading? = null
@@ -231,12 +235,15 @@ class RelayService : Service() {
             }
             State.SCANNING -> {
                 bleManager.stopScan()
+                cancelScanningWatchdog()
             }
             State.CONNECTED -> {
                 cancelReadingTimer()
+                cancelReadingWatchdog()
             }
             State.QUEUING -> {
                 cancelPiRetryTimer()
+                cancelReadingWatchdog()
             }
             State.STOPPED -> {
                 // Nothing to clean up
@@ -253,17 +260,20 @@ class RelayService : Service() {
                 performCheckIn()
             }
             State.SCANNING -> {
-                // Start BLE scan
+                // Start BLE scan with safety watchdog
+                startScanningWatchdog()
                 startBleScanning()
             }
             State.CONNECTED -> {
-                // Start reading timer
+                // Start reading timer and watchdog
+                startReadingWatchdog()
                 startReadingTimer()
                 // Request first reading immediately
                 requestReading()
             }
             State.QUEUING -> {
-                // Start Pi retry timer
+                // Start Pi retry timer and reading watchdog
+                startReadingWatchdog()
                 startPiRetryTimer()
             }
             State.STOPPED -> {
@@ -368,6 +378,7 @@ class RelayService : Service() {
     private fun onReadingReceived(reading: OxiReading) {
         Log.i(TAG, "Reading received: SpO2=${reading.spo2}, HR=${reading.heartRate}, Battery=${reading.battery}")
         lastReading = reading
+        resetReadingWatchdog()
         stateListener?.onReadingReceived(reading)
         updateNotification()
 
@@ -434,6 +445,46 @@ class RelayService : Service() {
                 stateListener?.onStatusUpdate("Pi unreachable - queuing locally")
             }
         }
+    }
+
+    // ==================== Watchdogs ====================
+
+    private fun startReadingWatchdog() {
+        cancelReadingWatchdog()
+        readingWatchdogRunnable = Runnable {
+            Log.w(TAG, "Reading watchdog: no data in ${READING_WATCHDOG_MS}ms - forcing reconnect")
+            stateListener?.onStatusUpdate("No data - reconnecting...")
+            bleManager.cleanup()
+            transitionTo(State.SCANNING)
+        }
+        handler.postDelayed(readingWatchdogRunnable!!, READING_WATCHDOG_MS)
+    }
+
+    private fun resetReadingWatchdog() {
+        readingWatchdogRunnable?.let {
+            handler.removeCallbacks(it)
+            handler.postDelayed(it, READING_WATCHDOG_MS)
+        }
+    }
+
+    private fun cancelReadingWatchdog() {
+        readingWatchdogRunnable?.let { handler.removeCallbacks(it) }
+        readingWatchdogRunnable = null
+    }
+
+    private fun startScanningWatchdog() {
+        cancelScanningWatchdog()
+        scanningWatchdogRunnable = Runnable {
+            Log.w(TAG, "Scanning watchdog: stuck in SCANNING for ${SCANNING_WATCHDOG_MS}ms")
+            bleManager.cleanup()
+            transitionTo(State.DORMANT)
+        }
+        handler.postDelayed(scanningWatchdogRunnable!!, SCANNING_WATCHDOG_MS)
+    }
+
+    private fun cancelScanningWatchdog() {
+        scanningWatchdogRunnable?.let { handler.removeCallbacks(it) }
+        scanningWatchdogRunnable = null
     }
 
     // ==================== BLE Callbacks ====================
@@ -596,6 +647,8 @@ class RelayService : Service() {
         cancelCheckInTimer()
         cancelReadingTimer()
         cancelPiRetryTimer()
+        cancelReadingWatchdog()
+        cancelScanningWatchdog()
     }
 
     private fun notifyStateChanged() {
