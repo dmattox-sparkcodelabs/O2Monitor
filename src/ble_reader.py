@@ -61,22 +61,34 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
         try:
             # 1. Remove stale device to clear zombie DBus objects and GATT cache
             subprocess.run(
-                f"bluetoothctl remove {mac}",
-                shell=True,
+                ["bluetoothctl", "remove", mac],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                timeout=5
             )
-            time.sleep(1)
+            time.sleep(0.5)
 
-            # 2. Re-scan to repopulate BlueZ cache
+            # 2. Start BLE scan (bluetoothctl exits but BlueZ daemon keeps scanning)
             subprocess.run(
-                "timeout 5s bash -c 'echo -e \"scan on\" | bluetoothctl'",
-                shell=True,
+                ["bluetoothctl", "scan", "on"],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                input=b""  # Close stdin so bluetoothctl exits after starting scan
             )
-            # Settling time for BlueZ to process advertisements
-            time.sleep(1)
+
+            # 3. Wait for device advertisements to be discovered
+            time.sleep(5)
+
+            # 4. Stop scan to save power
+            subprocess.run(
+                ["bluetoothctl", "scan", "off"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                input=b""
+            )
+            time.sleep(0.5)
         except Exception as e:
             queue.put({"type": "error", "message": f"Clean/Scan failed: {e}"})
 
@@ -222,23 +234,21 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     signal.alarm(45)
 
     try:
-        # Create BLE connection
-        ble = BLE_GATT.Central(mac_address)
-
-        # Connect with Retry Logic
+        # Attempt 1: Direct connect (device may already be in BlueZ cache)
         try:
-            # Attempt 1: Direct Connect (Optimistic)
+            ble = BLE_GATT.Central(mac_address)
             ble.connect()
         except Exception:
-            # Attempt 2: Scan first, then Connect
-            # This fixes the "Device Not Found" error if cache was wiped
+            # Attempt 2: Scan first to repopulate BlueZ cache, then retry
+            # The constructor itself fails if the device isn't cached,
+            # so we must catch both constructor and connect() failures.
             queue.put({"type": "status", "message": "retrying_with_scan"})
-            
-            # Reset alarm temporarily so we don't timeout during scan
+
             signal.alarm(0)
             force_device_discovery(mac_address)
-            signal.alarm(45)  # Re-arm alarm
-            
+            signal.alarm(45)
+
+            ble = BLE_GATT.Central(mac_address)
             ble.connect()
 
         queue.put({"type": "status", "message": "connected", "attempts": 1})
