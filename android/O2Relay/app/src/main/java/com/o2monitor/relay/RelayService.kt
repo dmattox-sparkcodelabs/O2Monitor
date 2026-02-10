@@ -31,11 +31,6 @@ class RelayService : Service() {
         private const val TAG = "RelayService"
         private const val NOTIFICATION_ID = 1
 
-        // Default settings (will be replaced by SettingsManager in Phase 1.7)
-        private const val DEFAULT_SERVER_URL = "http://192.168.4.100:5000"
-        private const val DEFAULT_OXIMETER_MAC = "C8:F1:6B:56:7B:F1"
-        private const val DEFAULT_DEVICE_ID = "android_relay"
-
         // Timing constants
         private const val CHECK_IN_INTERVAL_MS = 60_000L      // 60 seconds
         private const val READING_INTERVAL_MS = 5_000L        // 5 seconds
@@ -66,6 +61,7 @@ class RelayService : Service() {
     private val binder = RelayBinder()
 
     // Components
+    private lateinit var settings: SettingsManager
     private lateinit var bleManager: BleManager
     private lateinit var apiClient: ApiClient
 
@@ -103,15 +99,17 @@ class RelayService : Service() {
         super.onCreate()
         Log.i(TAG, "RelayService onCreate")
 
-        // Initialize components
+        // Initialize settings and components
+        settings = SettingsManager(this)
+
         bleManager = BleManager(this).apply {
-            targetMac = DEFAULT_OXIMETER_MAC
+            targetMac = settings.oximeterMac
             callback = bleCallback
         }
 
         apiClient = ApiClient(
-            baseUrl = DEFAULT_SERVER_URL,
-            deviceId = DEFAULT_DEVICE_ID
+            baseUrl = settings.serverUrl,
+            deviceId = settings.deviceId
         )
     }
 
@@ -157,6 +155,7 @@ class RelayService : Service() {
         }
 
         Log.i(TAG, "Starting relay service")
+        settings.serviceEnabled = true
 
         // Start as foreground service
         startForeground()
@@ -167,12 +166,17 @@ class RelayService : Service() {
 
     private fun stopRelayService() {
         Log.i(TAG, "Stopping relay service")
+        if (::settings.isInitialized) {
+            settings.serviceEnabled = false
+        }
 
         // Cancel all timers
         cancelAllTimers()
 
         // Disconnect BLE
-        bleManager.cleanup()
+        if (::bleManager.isInitialized) {
+            bleManager.cleanup()
+        }
 
         // Update state
         state = State.STOPPED
