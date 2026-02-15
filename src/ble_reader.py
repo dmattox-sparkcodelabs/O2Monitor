@@ -27,8 +27,14 @@ logger = logging.getLogger(__name__)
 RX_UUID = "0734594a-a8e7-4b1a-a6b1-cd5243059a57"  # Receive notifications
 TX_UUID = "8b00ace7-eb0b-49b0-bbe9-9aee0a26e1a3"  # Send commands
 
-
-def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_event: mp.Event):
+def _ble_worker(
+    mac_address: str,
+    read_interval: int,
+    queue: mp.Queue,
+    stop_event: mp.Event,
+    aggressive_cache_clear: bool = False,
+    discovery_scan_seconds: int = 6,
+):
     """
     BLE worker function that runs in a separate process.
 
@@ -50,47 +56,53 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
 
     signal.signal(signal.SIGALRM, timeout_handler)
 
+    def _btctl(*args: str, timeout_s: float) -> None:
+        subprocess.run(
+            ["bluetoothctl", *args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout_s,
+            check=False,
+        )
+
     # --- HELPER: Force Scan on Demand ---
-    def force_device_discovery(mac):
+    def force_device_discovery(mac: str, *, aggressive: bool) -> None:
         """
-        Force BlueZ to find the device by scanning briefly.
-        Removes stale device entry first to clear zombie DBus objects,
-        then repopulates the BlueZ cache via scan.
+        Force BlueZ to discover the device.
+
+        Key behavior: do NOT clear the BlueZ cache unless we're in an extended failure
+        state. Clearing cache and then failing to scan (e.g. bluetoothctl hangs) creates
+        a self-sustaining "device not found" loop.
         """
-        queue.put({"type": "status", "message": "cleaning_cache", "mac": mac})
+        queue.put(
+            {
+                "type": "status",
+                "message": "cleaning_cache" if aggressive else "scanning",
+                "mac": mac,
+            }
+        )
+
         try:
-            # 1. Remove stale device to clear zombie DBus objects and GATT cache
-            subprocess.run(
-                ["bluetoothctl", "remove", mac],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5
-            )
-            time.sleep(0.5)
+            if aggressive:
+                # Last resort: clear stale device entry to remove zombie DBus objects / GATT cache.
+                _btctl("remove", mac, timeout_s=8.0)
+                time.sleep(0.5)
 
-            # 2. Start BLE scan (bluetoothctl exits but BlueZ daemon keeps scanning)
-            subprocess.run(
-                ["bluetoothctl", "scan", "on"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2,
-                input=b""  # Close stdin so bluetoothctl exits after starting scan
-            )
-
-            # 3. Wait for device advertisements to be discovered
-            time.sleep(5)
-
-            # 4. Stop scan to save power
-            subprocess.run(
-                ["bluetoothctl", "scan", "off"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2,
-                input=b""
-            )
-            time.sleep(0.5)
+            # Start scanning. Some systems block in bluetoothctl; give it time and always stop scan.
+            _btctl("scan", "on", timeout_s=8.0)
+            end = time.time() + max(1, int(discovery_scan_seconds))
+            while time.time() < end and not stop_event.is_set():
+                time.sleep(0.5)
         except Exception as e:
             queue.put({"type": "error", "message": f"Clean/Scan failed: {e}"})
+        finally:
+            try:
+                _btctl("scan", "off", timeout_s=8.0)
+            except Exception:
+                pass
+            time.sleep(0.25)
+        
 
     try:
         import BLE_GATT
@@ -234,22 +246,34 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     signal.alarm(45)
 
     try:
-        # Attempt 1: Direct connect (device may already be in BlueZ cache)
+        # Connect with staged retry logic.
+        # Important: avoid clearing BlueZ cache unless we're in an extended failure mode.
         try:
+            # Attempt 1: Direct connect (fast path)
             ble = BLE_GATT.Central(mac_address)
             ble.connect()
         except Exception:
-            # Attempt 2: Scan first to repopulate BlueZ cache, then retry
-            # The constructor itself fails if the device isn't cached,
-            # so we must catch both constructor and connect() failures.
+            # Attempt 2: Scan without removing cache, then retry
             queue.put({"type": "status", "message": "retrying_with_scan"})
 
+            # Reset alarm temporarily so we don't timeout during scan
             signal.alarm(0)
-            force_device_discovery(mac_address)
-            signal.alarm(45)
+            force_device_discovery(mac_address, aggressive=False)
+            signal.alarm(45)  # Re-arm alarm
 
-            ble = BLE_GATT.Central(mac_address)
-            ble.connect()
+            try:
+                ble = BLE_GATT.Central(mac_address)
+                ble.connect()
+            except Exception:
+                # Attempt 3: Last resort - clear cache + scan, then retry once.
+                # This should be rare; aggressive cache clearing can cause "device not found"
+                # loops if bluetoothctl is misbehaving.
+                signal.alarm(0)
+                force_device_discovery(mac_address, aggressive=aggressive_cache_clear)
+                signal.alarm(45)
+
+                ble = BLE_GATT.Central(mac_address)
+                ble.connect()
 
         queue.put({"type": "status", "message": "connected", "attempts": 1})
 
@@ -278,8 +302,8 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     # Set up recurring timer to request readings every read_interval seconds
     GLib.timeout_add_seconds(read_interval, periodic_request)
 
-    # Set up periodic stop check (every 5 seconds)
-    GLib.timeout_add_seconds(5, check_stop)
+    # Check stop frequently so parent can shut down without terminate()'ing us.
+    GLib.timeout_add_seconds(1, check_stop)
 
     queue.put({"type": "status", "message": "monitoring"})
 
@@ -370,9 +394,23 @@ class CheckmeO2Reader:
         self._queue = self._mp_context.Queue()
         self._stop_event = self._mp_context.Event()
 
+        # Only clear BlueZ cache as a last resort after extended outages.
+        aggressive_cache_clear = False
+        if self._consecutive_failures >= 10:
+            aggressive_cache_clear = True
+        elif self._disconnect_start_time:
+            if (time.time() - self._disconnect_start_time) >= 10 * 60:
+                aggressive_cache_clear = True
+
         self._process = self._mp_context.Process(
             target=_ble_worker,
-            args=(self.mac_address, self.read_interval, self._queue, self._stop_event),
+            args=(
+                self.mac_address,
+                self.read_interval,
+                self._queue,
+                self._stop_event,
+                aggressive_cache_clear,
+            ),
             daemon=True,
         )
         self._process.start()
@@ -390,7 +428,8 @@ class CheckmeO2Reader:
         if process is not None:
             try:
                 if process.is_alive():
-                    process.join(timeout=3)
+                    # Worker checks stop_event every 1s; give it time to cleanly disconnect.
+                    process.join(timeout=8)
                     if process.is_alive():
                         process.terminate()
                         process.join(timeout=2)
@@ -544,6 +583,11 @@ class CheckmeO2Reader:
 
     def stop(self):
         """Stop the BLE reader subprocess."""
+        # stop() can be called from multiple threads (watchdog, shutdown, etc.).
+        # Make it idempotent to avoid repeated stop/terminate churn.
+        if not self._running and self._process is None:
+            return
+
         logger.info("Stopping BLE reader...")
         self._running = False
 
