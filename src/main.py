@@ -206,6 +206,7 @@ class O2MonitorApp:
             state_machine=self.state_machine,
             database=self.database,
             alert_manager=self.alert_manager,
+            config_path=os.path.abspath(self.config_path),
         )
 
         logger.info("All components initialized")

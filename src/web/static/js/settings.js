@@ -130,8 +130,6 @@
 
         // Bluetooth & Timeouts
         if (config.bluetooth) {
-            // Adapter names
-            }
             setValue('readInterval', config.bluetooth.read_interval_seconds);
             setValue('lateReading', config.bluetooth.late_reading_seconds);
             setValue('respawnDelay', config.bluetooth.respawn_delay_seconds);

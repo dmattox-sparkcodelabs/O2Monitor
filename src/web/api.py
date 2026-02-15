@@ -22,6 +22,7 @@ from functools import wraps
 from typing import Optional
 
 from flask import Blueprint, g, jsonify, request, session
+from flask import current_app
 
 from src.models import Alert, AlertSeverity, AlertType
 from src.web.auth import api_login_required
@@ -680,23 +681,25 @@ def update_config():
             config.bluetooth.bt_restart_threshold_minutes = int(bt['bt_restart_threshold_minutes'])
             updated.append('bluetooth.bt_restart_threshold_minutes')
 
-    # Persist to config.yaml
+    # Persist to config file (use same path the app was launched with, if available)
     from src.config import save_config
     try:
-        save_config(config, "config.yaml")
-        logger.info(f"Config updated and saved by {session.get('user')}: {updated}")
+        config_path = current_app.config.get('CONFIG_PATH') or "config.yaml"
+        save_config(config, config_path)
+        logger.info(f"Config updated and saved to {config_path} by {session.get('user')}: {updated}")
         return jsonify({
             'success': True,
             'updated': updated,
-            'message': f'Updated {len(updated)} settings and saved to config.yaml',
+            'saved_to': str(config_path),
+            'message': f'Updated {len(updated)} settings and saved to {config_path}',
         })
     except Exception as e:
-        logger.error(f"Failed to save config: {e}")
+        logger.exception("Failed to save config")
         return jsonify({
-            'success': True,
+            'success': False,
             'updated': updated,
-            'message': f'Updated {len(updated)} settings (save to file failed: {e})',
-        })
+            'error': f'Failed to save config: {e}',
+        }), 500
 
 
 # ==================== Audio Test ====================
