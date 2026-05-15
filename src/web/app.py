@@ -29,7 +29,7 @@ from flask import Flask, g
 logger = logging.getLogger(__name__)
 
 
-def create_app(config, state_machine=None, database=None, alert_manager=None):
+def create_app(config, state_machine=None, database=None, alert_manager=None, config_path: Optional[str] = None):
     """Create and configure Flask application.
 
     Args:
@@ -61,6 +61,7 @@ def create_app(config, state_machine=None, database=None, alert_manager=None):
     app.config['DATABASE'] = database
     app.config['ALERT_MANAGER'] = alert_manager
     app.config['APP_CONFIG'] = config
+    app.config['CONFIG_PATH'] = config_path
 
     # Register blueprints
     from src.web.routes import main_bp

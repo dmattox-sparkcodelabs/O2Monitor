@@ -206,6 +206,7 @@ class O2MonitorApp:
             state_machine=self.state_machine,
             database=self.database,
             alert_manager=self.alert_manager,
+            config_path=os.path.abspath(self.config_path),
         )
 
         logger.info("All components initialized")
@@ -284,7 +285,9 @@ class O2MonitorApp:
 
     def _ble_watchdog(self) -> None:
         """Monitor BLE connection and force reconnect if stale."""
-        stale_threshold = 60  # seconds without reading before forcing reconnect
+        # Avoid reconnect thrash: the BLE reader already has backoff/retry and adapter switching.
+        # Only intervene if we're "connected" but haven't seen readings for a long time.
+        stale_threshold = 5 * 60  # seconds without reading before forcing reconnect
 
         # Wait for BLE reader to connect initially
         time.sleep(15)
@@ -293,7 +296,7 @@ class O2MonitorApp:
             time.sleep(5)  # Check every 5 seconds
 
             # Skip if not connected yet
-            if not self.ble_reader._connected:
+            if not self.ble_reader.is_connected:
                 continue
 
             # Check if readings are stale

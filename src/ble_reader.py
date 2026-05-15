@@ -10,17 +10,14 @@ Wellue/Viatom Checkme O2 Max pulse oximeter device.
 
 Uses multiprocessing to run BLE/GLib in a completely separate process,
 avoiding state pollution from asyncio/D-Bus interactions.
-
-Supports multiple Bluetooth adapters with automatic failover.
 """
 
 import logging
 import multiprocessing as mp
 import subprocess
 import time
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from src.models import OxiReading
 
@@ -30,243 +27,14 @@ logger = logging.getLogger(__name__)
 RX_UUID = "0734594a-a8e7-4b1a-a6b1-cd5243059a57"  # Receive notifications
 TX_UUID = "8b00ace7-eb0b-49b0-bbe9-9aee0a26e1a3"  # Send commands
 
-
-@dataclass
-class AdapterInfo:
-    """Information about a Bluetooth adapter."""
-    name: str
-    mac_address: str
-    hci: Optional[str] = None  # e.g., "hci0"
-    is_up: bool = False
-
-
-class AdapterManager:
-    """Manages multiple Bluetooth adapters with failover support.
-
-    Handles:
-    - Discovering available adapters
-    - Selecting which adapter to use
-    - Switching between adapters on failure
-    - Bringing adapters up/down via hciconfig
-    """
-
-    def __init__(self, adapters_config: List[Dict[str, str]]):
-        """Initialize with adapter configuration.
-
-        Args:
-            adapters_config: List of dicts with 'name' and 'mac_address' keys
-        """
-        self.configured_adapters = [
-            AdapterInfo(name=a.get('name', 'Unknown'), mac_address=a.get('mac_address', '').upper())
-            for a in adapters_config
-        ]
-        self.current_adapter_index = 0
-        self.is_switching_mode = False
-        self.switch_mode_start_time: Optional[float] = None
-
-        logger.info(f"AdapterManager initialized with {len(self.configured_adapters)} adapters: "
-                    f"{[a.name for a in self.configured_adapters]}")
-
-    def discover_adapters(self) -> List[AdapterInfo]:
-        """Discover available Bluetooth adapters and match with config."""
-        try:
-            result = subprocess.run(
-                ['hciconfig', '-a'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            if result.returncode != 0:
-                logger.error("Failed to run hciconfig")
-                return []
-
-            # Parse hciconfig output
-            import re
-            current_hci = None
-            current_mac = None
-            current_up = False
-
-            for line in result.stdout.split('\n'):
-                hci_match = re.match(r'^(hci\d+):', line)
-                if hci_match:
-                    # Save previous adapter if any
-                    if current_hci and current_mac:
-                        self._update_adapter_info(current_hci, current_mac, current_up)
-
-                    current_hci = hci_match.group(1)
-                    current_mac = None
-                    current_up = 'UP' in line and 'RUNNING' in line
-                else:
-                    bd_match = re.search(r'BD Address:\s*([0-9A-Fa-f:]+)', line)
-                    if bd_match:
-                        current_mac = bd_match.group(1).upper()
-                    if 'UP RUNNING' in line:
-                        current_up = True
-
-            # Don't forget the last adapter
-            if current_hci and current_mac:
-                self._update_adapter_info(current_hci, current_mac, current_up)
-
-            return self.configured_adapters
-
-        except Exception as e:
-            logger.error(f"Error discovering adapters: {e}")
-            return []
-
-    def _update_adapter_info(self, hci: str, mac: str, is_up: bool):
-        """Update adapter info based on discovered data."""
-        for adapter in self.configured_adapters:
-            if adapter.mac_address == mac:
-                adapter.hci = hci
-                adapter.is_up = is_up
-                logger.debug(f"Found adapter {adapter.name} ({mac}) as {hci}, up={is_up}")
-                break
-
-    def get_current_adapter(self) -> Optional[AdapterInfo]:
-        """Get the currently selected adapter."""
-        if not self.configured_adapters:
-            return None
-        if self.current_adapter_index >= len(self.configured_adapters):
-            self.current_adapter_index = 0
-        return self.configured_adapters[self.current_adapter_index]
-
-    def switch_to_adapter(self, target: AdapterInfo) -> bool:
-        """Switch to a specific adapter.
-
-        Args:
-            target: The adapter to switch to
-
-        Returns:
-            True if switch was successful
-        """
-        # Find the index of the target adapter
-        for i, adapter in enumerate(self.configured_adapters):
-            if adapter.name == target.name or adapter.mac_address == target.mac_address:
-                self.current_adapter_index = i
-                logger.info(f"Set current adapter to {adapter.name}")
-                return True
-
-        logger.error(f"Adapter {target.name} not found in configuration")
-        return False
-
-    @property
-    def adapters(self) -> List[AdapterInfo]:
-        """Get list of configured adapters."""
-        return self.configured_adapters
-
-    def switch_to_next_adapter(self) -> Optional[AdapterInfo]:
-        """Switch to the next available adapter.
-
-        Returns:
-            The new adapter, or None if no adapters available
-        """
-        if len(self.configured_adapters) < 2:
-            logger.warning("Cannot switch - only one adapter configured")
-            return self.get_current_adapter()
-
-        # Refresh adapter status before switching
-        self.discover_adapters()
-
-        old_adapter = self.get_current_adapter()
-
-        # Find next available adapter (one that has an hci device)
-        attempts = 0
-        while attempts < len(self.configured_adapters):
-            self.current_adapter_index = (self.current_adapter_index + 1) % len(self.configured_adapters)
-            new_adapter = self.get_current_adapter()
-
-            if new_adapter and new_adapter.hci:
-                # Found an available adapter
-                break
-            else:
-                logger.warning(f"Adapter {new_adapter.name if new_adapter else 'Unknown'} not detected, skipping...")
-                attempts += 1
-
-        if attempts >= len(self.configured_adapters):
-            logger.error("No adapters available!")
-            return None
-
-        new_adapter = self.get_current_adapter()
-        logger.info(f"Switching adapter: {old_adapter.name if old_adapter else 'None'} -> {new_adapter.name if new_adapter else 'None'}")
-
-        # Bring down old adapter, bring up new one
-        if old_adapter and old_adapter.hci:
-            self._set_adapter_state(old_adapter.hci, up=False)
-
-        if new_adapter and new_adapter.hci:
-            self._set_adapter_state(new_adapter.hci, up=True)
-
-        return new_adapter
-
-    def activate_adapter(self, adapter: AdapterInfo) -> bool:
-        """Activate a specific adapter and deactivate others.
-
-        Returns:
-            True if successful
-        """
-        # Refresh adapter status
-        self.discover_adapters()
-
-        # Check if target adapter is available
-        if not adapter.hci:
-            logger.error(f"Adapter {adapter.name} not detected - cannot activate")
-            return False
-
-        # Bring down all other adapters
-        for a in self.configured_adapters:
-            if a != adapter and a.hci:
-                self._set_adapter_state(a.hci, up=False)
-
-        # Bring up the target adapter
-        return self._set_adapter_state(adapter.hci, up=True)
-
-    def _set_adapter_state(self, hci: str, up: bool) -> bool:
-        """Set adapter state via hciconfig."""
-        try:
-            cmd = ['sudo', 'hciconfig', hci, 'up' if up else 'down']
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-
-            if result.returncode == 0:
-                logger.info(f"Adapter {hci} {'up' if up else 'down'}")
-                return True
-            else:
-                logger.error(f"Failed to set {hci} {'up' if up else 'down'}: {result.stderr}")
-                return False
-        except Exception as e:
-            logger.error(f"Error setting adapter state: {e}")
-            return False
-
-    def enter_switching_mode(self):
-        """Enter switching mode - bouncing between adapters."""
-        if not self.is_switching_mode:
-            self.is_switching_mode = True
-            self.switch_mode_start_time = time.time()
-            logger.warning("Entering adapter switching mode")
-
-    def exit_switching_mode(self):
-        """Exit switching mode - readings resumed."""
-        if self.is_switching_mode:
-            self.is_switching_mode = False
-            duration = time.time() - self.switch_mode_start_time if self.switch_mode_start_time else 0
-            logger.info(f"Exiting adapter switching mode (was in mode for {duration:.1f}s)")
-            self.switch_mode_start_time = None
-
-    def check_adapter_health(self) -> Dict[str, bool]:
-        """Check which adapters are currently available.
-
-        Returns:
-            Dict mapping adapter name to availability (True = detected)
-        """
-        self.discover_adapters()
-        return {a.name: (a.hci is not None) for a in self.configured_adapters}
-
-    def get_available_adapter_count(self) -> int:
-        """Get count of currently available adapters."""
-        return sum(1 for a in self.configured_adapters if a.hci is not None)
-
-
-def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_event: mp.Event):
+def _ble_worker(
+    mac_address: str,
+    read_interval: int,
+    queue: mp.Queue,
+    stop_event: mp.Event,
+    aggressive_cache_clear: bool = False,
+    discovery_scan_seconds: int = 6,
+):
     """
     BLE worker function that runs in a separate process.
 
@@ -288,27 +56,53 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
 
     signal.signal(signal.SIGALRM, timeout_handler)
 
+    def _btctl(*args: str, timeout_s: float) -> None:
+        subprocess.run(
+            ["bluetoothctl", *args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            timeout=timeout_s,
+            check=False,
+        )
+
     # --- HELPER: Force Scan on Demand ---
-    def force_device_discovery(mac):
+    def force_device_discovery(mac: str, *, aggressive: bool) -> None:
         """
-        Force BlueZ to find the device by scanning briefly.
-        This repopulates the BlueZ internal cache if the adapter was reset.
+        Force BlueZ to discover the device.
+
+        Key behavior: do NOT clear the BlueZ cache unless we're in an extended failure
+        state. Clearing cache and then failing to scan (e.g. bluetoothctl hangs) creates
+        a self-sustaining "device not found" loop.
         """
-        queue.put({"type": "status", "message": "scanning", "mac": mac})
+        queue.put(
+            {
+                "type": "status",
+                "message": "cleaning_cache" if aggressive else "scanning",
+                "mac": mac,
+            }
+        )
+
         try:
-            # Run scan for 5 seconds then kill it
-            # Using 'timeout' command to ensure it doesn't hang
-            # Select hci1 (Hallway adapter) explicitly before scanning
-            subprocess.run(
-                "timeout 5s bash -c 'echo -e \"select 10:A5:62:EC:E8:A5\\nscan on\" | bluetoothctl'",
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            # Small settling time for BlueZ to process advertisements
-            time.sleep(1)
+            if aggressive:
+                # Last resort: clear stale device entry to remove zombie DBus objects / GATT cache.
+                _btctl("remove", mac, timeout_s=8.0)
+                time.sleep(0.5)
+
+            # Start scanning. Some systems block in bluetoothctl; give it time and always stop scan.
+            _btctl("scan", "on", timeout_s=8.0)
+            end = time.time() + max(1, int(discovery_scan_seconds))
+            while time.time() < end and not stop_event.is_set():
+                time.sleep(0.5)
         except Exception as e:
-            queue.put({"type": "error", "message": f"Scan failed: {e}"})
+            queue.put({"type": "error", "message": f"Clean/Scan failed: {e}"})
+        finally:
+            try:
+                _btctl("scan", "off", timeout_s=8.0)
+            except Exception:
+                pass
+            time.sleep(0.25)
+        
 
     try:
         import BLE_GATT
@@ -352,7 +146,19 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     def request_reading():
         """Send command 0x17 to request sensor values."""
         cmd = build_command(0x17)
-        ble.char_write(TX_UUID, cmd)
+        try:
+            ble.char_write(TX_UUID, cmd)
+        except Exception as e:
+            error_str = str(e)
+            if "Not connected" in error_str:
+                queue.put({"type": "error", "message": f"Device disconnected during write: {error_str}"})
+                # Terminate the GLib loop so the worker exits cleanly
+                try:
+                    ble.cleanup()
+                except Exception:
+                    pass
+                return
+            raise
 
     def handle_notification(value):
         """Handle incoming BLE notification."""
@@ -440,24 +246,34 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     signal.alarm(45)
 
     try:
-        # Create BLE connection
-        ble = BLE_GATT.Central(mac_address)
-
-        # Connect with Retry Logic
+        # Connect with staged retry logic.
+        # Important: avoid clearing BlueZ cache unless we're in an extended failure mode.
         try:
-            # Attempt 1: Direct Connect (Optimistic)
+            # Attempt 1: Direct connect (fast path)
+            ble = BLE_GATT.Central(mac_address)
             ble.connect()
         except Exception:
-            # Attempt 2: Scan first, then Connect
-            # This fixes the "Device Not Found" error if cache was wiped
+            # Attempt 2: Scan without removing cache, then retry
             queue.put({"type": "status", "message": "retrying_with_scan"})
-            
+
             # Reset alarm temporarily so we don't timeout during scan
             signal.alarm(0)
-            force_device_discovery(mac_address)
+            force_device_discovery(mac_address, aggressive=False)
             signal.alarm(45)  # Re-arm alarm
-            
-            ble.connect()
+
+            try:
+                ble = BLE_GATT.Central(mac_address)
+                ble.connect()
+            except Exception:
+                # Attempt 3: Last resort - clear cache + scan, then retry once.
+                # This should be rare; aggressive cache clearing can cause "device not found"
+                # loops if bluetoothctl is misbehaving.
+                signal.alarm(0)
+                force_device_discovery(mac_address, aggressive=aggressive_cache_clear)
+                signal.alarm(45)
+
+                ble = BLE_GATT.Central(mac_address)
+                ble.connect()
 
         queue.put({"type": "status", "message": "connected", "attempts": 1})
 
@@ -486,8 +302,8 @@ def _ble_worker(mac_address: str, read_interval: int, queue: mp.Queue, stop_even
     # Set up recurring timer to request readings every read_interval seconds
     GLib.timeout_add_seconds(read_interval, periodic_request)
 
-    # Set up periodic stop check (every 5 seconds)
-    GLib.timeout_add_seconds(5, check_stop)
+    # Check stop frequently so parent can shut down without terminate()'ing us.
+    GLib.timeout_add_seconds(1, check_stop)
 
     queue.put({"type": "status", "message": "monitoring"})
 
@@ -505,8 +321,6 @@ class CheckmeO2Reader:
 
     This class manages a worker subprocess that handles all BLE/GLib
     communication, keeping the main process free of GLib state pollution.
-
-    Supports multiple Bluetooth adapters with automatic failover.
     """
 
     def __init__(
@@ -515,17 +329,12 @@ class CheckmeO2Reader:
         callback: Optional[Callable[[OxiReading], None]] = None,
         error_callback: Optional[Callable[[str], None]] = None,
         read_interval: int = 10,
-        adapters_config: Optional[List[Dict[str, str]]] = None,
-        switch_timeout_minutes: int = 5,
-        bounce_interval_minutes: int = 1,
         respawn_delay_seconds: int = 15,
     ):
         self.mac_address = mac_address
         self.callback = callback
         self.error_callback = error_callback
         self.read_interval = read_interval
-        self.switch_timeout_seconds = switch_timeout_minutes * 60
-        self.bounce_interval_seconds = bounce_interval_minutes * 60
         self.respawn_delay_seconds = respawn_delay_seconds
 
         # Process management
@@ -550,22 +359,10 @@ class CheckmeO2Reader:
         self._relay_backoff: bool = False
         self._relay_backoff_until: Optional[float] = None
 
-        # Adapter management
-        self._adapter_manager: Optional[AdapterManager] = None
-        if adapters_config:
-            self._adapter_manager = AdapterManager(adapters_config)
-            self._adapter_manager.discover_adapters()
-
-        self._last_switch_time: float = 0
-        self._last_health_check: float = 0
-        self._health_check_interval: int = 60  # Check adapter health every 60 seconds
-        self._current_adapter_name: str = "default"
-
         # Use 'spawn' context for clean process state
         self._mp_context = mp.get_context('spawn')
 
-        logger.info(f"CheckmeO2Reader initialized (MAC: {mac_address}, multiprocessing mode, "
-                    f"adapters: {len(adapters_config) if adapters_config else 0})")
+        logger.info(f"CheckmeO2Reader initialized (MAC: {mac_address}, multiprocessing mode)")
 
     def _get_backoff_delay(self) -> int:
         """Calculate exponential backoff delay based on consecutive failures.
@@ -595,11 +392,6 @@ class CheckmeO2Reader:
     @property
     def battery_level(self) -> Optional[int]:
         return self._battery_level if self._connected else None
-
-    @property
-    def current_adapter_name(self) -> str:
-        """Get the name of the currently active adapter."""
-        return self._current_adapter_name
 
     def set_relay_backoff(self, active: bool, duration_seconds: int = 60) -> None:
         """Set relay backoff mode.
@@ -631,125 +423,32 @@ class CheckmeO2Reader:
             return False
         return True
 
-    def _select_and_activate_adapter(self):
-        """Select and activate the current adapter."""
-        if self._adapter_manager:
-            # Refresh adapter status
-            self._adapter_manager.discover_adapters()
-
-            adapter = self._adapter_manager.get_current_adapter()
-
-            # If current adapter not available, try to find one that is
-            if adapter and not adapter.hci:
-                logger.warning(f"Adapter {adapter.name} not detected, looking for available adapter...")
-                for i, a in enumerate(self._adapter_manager.configured_adapters):
-                    if a.hci:
-                        self._adapter_manager.current_adapter_index = i
-                        adapter = a
-                        break
-
-            if adapter and adapter.hci:
-                # OPTIMIZATION: Check if already UP before touching it.
-                # Resetting the adapter (down/up) wipes the BlueZ cache and can cause
-                # "Device not found" errors and USB instability.
-                if adapter.is_up:
-                    logger.info(f"Adapter {adapter.name} is already UP. Using existing state.")
-                    self._current_adapter_name = adapter.name
-                else:
-                    if self._adapter_manager.activate_adapter(adapter):
-                        self._current_adapter_name = adapter.name
-                        logger.info(f"Using adapter: {adapter.name} ({adapter.mac_address})")
-                    else:
-                        logger.error(f"Failed to activate adapter {adapter.name}")
-                        self._current_adapter_name = "default"
-            else:
-                logger.warning("No adapters available, using system default")
-                self._current_adapter_name = "default"
-        else:
-            self._current_adapter_name = "default"
-
-    def _check_adapter_health(self):
-        """Periodically check adapter availability."""
-        if not self._adapter_manager:
-            return
-
-        now = time.time()
-        if now - self._last_health_check < self._health_check_interval:
-            return
-
-        self._last_health_check = now
-        health = self._adapter_manager.check_adapter_health()
-        available_count = self._adapter_manager.get_available_adapter_count()
-
-        # Log any changes in adapter availability
-        for name, available in health.items():
-            if not available:
-                logger.warning(f"Adapter {name} not detected")
-
-        if available_count == 0:
-            logger.error("No Bluetooth adapters available!")
-        elif available_count < len(self._adapter_manager.configured_adapters):
-            logger.warning(f"Only {available_count}/{len(self._adapter_manager.configured_adapters)} adapters available")
-
-    def _check_adapter_switch_needed(self) -> bool:
-        """Check if we should switch adapters due to timeout.
-
-        Returns:
-            True if adapter was switched
-        """
-        if not self._adapter_manager or len(self._adapter_manager.configured_adapters) < 2:
-            return False
-
-        now = time.time()
-        time_since_last_reading = now - self._last_reading_time
-
-        # Determine the timeout to use
-        if self._adapter_manager.is_switching_mode:
-            timeout = self.bounce_interval_seconds
-        else:
-            timeout = self.switch_timeout_seconds
-
-        # Check if we've exceeded the timeout
-        if time_since_last_reading > timeout and (now - self._last_switch_time) > timeout:
-            if not self._adapter_manager.is_switching_mode:
-                self._adapter_manager.enter_switching_mode()
-
-            logger.warning(f"No readings for {time_since_last_reading:.0f}s, switching adapter...")
-            self._switch_adapter()
-            return True
-
-        return False
-
-    def _switch_adapter(self):
-        """Switch to the next adapter and restart the worker."""
-        if not self._adapter_manager:
-            return
-
-        # Stop current worker
-        self._stop_worker()
-
-        # Switch to next adapter
-        new_adapter = self._adapter_manager.switch_to_next_adapter()
-        if new_adapter:
-            self._current_adapter_name = new_adapter.name
-
-        self._last_switch_time = time.time()
-
-        # Start new worker
-        self._start_worker()
-
     def _start_worker(self):
         """Start the BLE worker process."""
         self._queue = self._mp_context.Queue()
         self._stop_event = self._mp_context.Event()
 
+        # Only clear BlueZ cache as a last resort after extended outages.
+        aggressive_cache_clear = False
+        if self._consecutive_failures >= 10:
+            aggressive_cache_clear = True
+        elif self._disconnect_start_time:
+            if (time.time() - self._disconnect_start_time) >= 10 * 60:
+                aggressive_cache_clear = True
+
         self._process = self._mp_context.Process(
             target=_ble_worker,
-            args=(self.mac_address, self.read_interval, self._queue, self._stop_event),
+            args=(
+                self.mac_address,
+                self.read_interval,
+                self._queue,
+                self._stop_event,
+                aggressive_cache_clear,
+            ),
             daemon=True,
         )
         self._process.start()
-        logger.info(f"BLE worker process started (PID: {self._process.pid}, adapter: {self._current_adapter_name})")
+        logger.info(f"BLE worker process started (PID: {self._process.pid})")
 
     def _stop_worker(self):
         """Stop the BLE worker process."""
@@ -763,7 +462,8 @@ class CheckmeO2Reader:
         if process is not None:
             try:
                 if process.is_alive():
-                    process.join(timeout=3)
+                    # Worker checks stop_event every 1s; give it time to cleanly disconnect.
+                    process.join(timeout=8)
                     if process.is_alive():
                         process.terminate()
                         process.join(timeout=2)
@@ -779,12 +479,8 @@ class CheckmeO2Reader:
         self._connected = False
         self._readings = []
         self._last_reading_time = time.time()  # Initialize to now
-        self._last_switch_time = 0
         self._consecutive_failures = 0
         self._disconnect_start_time = None
-
-        # Select and activate initial adapter
-        self._select_and_activate_adapter()
 
         # Start worker
         self._start_worker()
@@ -795,7 +491,6 @@ class CheckmeO2Reader:
                 # Check if relay backoff is active (phone is relaying data)
                 if self.is_relay_backoff_active:
                     # Phone is relaying - don't try to reconnect BLE
-                    # Just wait and keep checking
                     time.sleep(1.0)
                     continue
 
@@ -823,7 +518,7 @@ class CheckmeO2Reader:
                     elif self._consecutive_failures == 10:
                         logger.error(f"BLE connection issues: 10 consecutive failures over {disconnect_mins}m {disconnect_secs}s - adapter may need reset")
                     elif self._consecutive_failures == 20:
-                        logger.error(f"BLE connection issues: 20 consecutive failures over {disconnect_mins}m {disconnect_secs}s - check device and adapters")
+                        logger.error(f"BLE connection issues: 20 consecutive failures over {disconnect_mins}m {disconnect_secs}s - check device and adapter")
                     elif self._consecutive_failures % 20 == 0:
                         logger.error(f"BLE connection issues: {self._consecutive_failures} consecutive failures over {disconnect_mins}m {disconnect_secs}s")
                     else:
@@ -842,11 +537,8 @@ class CheckmeO2Reader:
                         break
 
                 except Exception:
-                    # Queue timeout - check adapter health and switch if needed
-                    # Skip these checks if relay backoff is active
-                    if not self.is_relay_backoff_active:
-                        self._check_adapter_health()
-                        self._check_adapter_switch_needed()
+                    # Queue timeout - nothing to do
+                    pass
 
         except KeyboardInterrupt:
             logger.info("Interrupted")
@@ -873,6 +565,8 @@ class CheckmeO2Reader:
                     logger.info(f"Connected after {msg.get('attempts')} attempts")
             elif status == "retrying_with_scan":
                 logger.debug(f"Direct connection failed, forcing scan to repopulate cache...")
+            elif status == "cleaning_cache":
+                logger.debug("Removing stale device and rescanning...")
             elif status == "scanning":
                 logger.debug("Scanning for device...")
             elif status == "monitoring":
@@ -912,11 +606,6 @@ class CheckmeO2Reader:
             # Track last successful reading time
             self._last_successful_reading_time = time.time()
 
-            # Exit switching mode if we were in it - we got a reading!
-            if self._adapter_manager and self._adapter_manager.is_switching_mode:
-                self._adapter_manager.exit_switching_mode()
-                logger.info(f"Readings resumed on adapter: {self._current_adapter_name}")
-
             logger.info(f"Reading: SpO2={reading.spo2}%, HR={reading.heart_rate}bpm, Battery={reading.battery_level}%")
 
             # Call user callback
@@ -934,6 +623,11 @@ class CheckmeO2Reader:
 
     def stop(self):
         """Stop the BLE reader subprocess."""
+        # stop() can be called from multiple threads (watchdog, shutdown, etc.).
+        # Make it idempotent to avoid repeated stop/terminate churn.
+        if not self._running and self._process is None:
+            return
+
         logger.info("Stopping BLE reader...")
         self._running = False
 
@@ -959,28 +653,15 @@ def get_reader(config, callback=None, error_callback=None):
             read_interval=config.devices.oximeter.read_interval_seconds,
         )
     else:
-        # Build adapters config from bluetooth section
-        adapters_config = None
-        if hasattr(config, 'bluetooth') and config.bluetooth.adapters:
-            adapters_config = [
-                {'name': a.name, 'mac_address': a.mac_address}
-                for a in config.bluetooth.adapters
-            ]
-
         # Get timing config
         read_interval = config.bluetooth.read_interval_seconds if hasattr(config, 'bluetooth') else config.devices.oximeter.read_interval_seconds
-        switch_timeout = config.bluetooth.switch_timeout_minutes if hasattr(config, 'bluetooth') else 5
-        bounce_interval = config.bluetooth.bounce_interval_minutes if hasattr(config, 'bluetooth') else 1
         respawn_delay = config.bluetooth.respawn_delay_seconds if hasattr(config, 'bluetooth') else 15
 
-        logger.info(f"Using CheckmeO2Reader (multiprocessing mode, {len(adapters_config) if adapters_config else 0} adapters)")
+        logger.info("Using CheckmeO2Reader (multiprocessing mode)")
         return CheckmeO2Reader(
             mac_address=config.devices.oximeter.mac_address,
             callback=callback,
             error_callback=error_callback,
             read_interval=read_interval,
-            adapters_config=adapters_config,
-            switch_timeout_minutes=switch_timeout,
-            bounce_interval_minutes=bounce_interval,
             respawn_delay_seconds=respawn_delay,
         )

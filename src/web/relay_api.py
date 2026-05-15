@@ -54,15 +54,16 @@ def get_relay_status():
     """Check if the Pi needs relay help from the Android app.
 
     Returns:
-        JSON with:
+        JSON with fields matching Android app expectations:
+        - timestamp: str - Current Pi time (ISO format)
+        - last_reading_age_seconds: int|null - Seconds since last valid reading
+        - source: str - Current data source ('BLE' or 'Mobile')
         - needs_relay: bool - True if Pi wants the phone to relay readings
-        - ble_connected: bool - Current BLE connection state
-        - seconds_since_reading: int|null - Seconds since last valid reading
+        - pi_ble_connected: bool - Current BLE connection state
         - relay_active: bool - True if Pi is currently receiving relay data
-        - pi_timestamp: str - Current Pi time (for clock sync check)
-        - current_vitals: object|null - Latest vitals data for display
+        - current_vitals: object|null - Latest vitals for display
         - therapy_active: bool - True if AVAPS therapy is on
-        - power_watts: float|null - Current AVAPS power draw in watts
+        - power_watts: float|null - Current AVAPS power draw
 
     The phone should start relaying when needs_relay is True and stop
     when it becomes False.
@@ -73,9 +74,9 @@ def get_relay_status():
     status = g.state_machine.get_status()
 
     # Calculate seconds since last reading
-    seconds_since_reading = None
+    last_reading_age_seconds = None
     if status.ble_status.last_reading_time:
-        seconds_since_reading = int(
+        last_reading_age_seconds = int(
             (datetime.now() - status.ble_status.last_reading_time).total_seconds()
         )
 
@@ -86,7 +87,7 @@ def get_relay_status():
     late_threshold = g.config.bluetooth.late_reading_seconds if g.config else 30
     needs_relay = (
         not status.ble_status.connected or
-        (seconds_since_reading is not None and seconds_since_reading > late_threshold)
+        (last_reading_age_seconds is not None and last_reading_age_seconds > late_threshold)
     )
 
     # Check if relay is currently active (receiving data from phone)
@@ -98,21 +99,18 @@ def get_relay_status():
         relay_age = (datetime.now() - last_relay_time).total_seconds()
         relay_active = relay_age < 30
 
+    # Determine current data source
+    if relay_active:
+        source = 'Mobile'
+    elif status.ble_status.connected:
+        source = 'BLE'
+    else:
+        source = 'None'
+
     # Build current vitals for display on the phone
     current_vitals = None
     reading = status.current_reading
     if reading:
-        # Determine source: adapter name (Hallway, Bedroom) or Mobile
-        if relay_active:
-            source = 'Mobile'
-        else:
-            # Get the current adapter name from BLE reader
-            source = 'BLE'  # Default fallback
-            if g.state_machine and hasattr(g.state_machine, 'ble_reader'):
-                ble_reader = g.state_machine.ble_reader
-                if hasattr(ble_reader, 'current_adapter_name'):
-                    source = ble_reader.current_adapter_name or 'BLE'
-
         current_vitals = {
             'spo2': reading.spo2,
             'heart_rate': reading.heart_rate,
@@ -126,42 +124,21 @@ def get_relay_status():
     therapy_active = status.avaps_state == AVAPSState.ON
     power_watts = status.avaps_power_watts
 
-    # Build sources list with active indicator
-    # Sources are the configured BLE adapters plus Mobile
-    sources = []
-    active_source = None
-
-    # Determine the active source
-    if relay_active:
-        active_source = 'Mobile'
-    elif g.state_machine and hasattr(g.state_machine, 'ble_reader'):
-        ble_reader = g.state_machine.ble_reader
-        if hasattr(ble_reader, 'current_adapter_name') and ble_reader.current_adapter_name:
-            if status.ble_status.connected:
-                active_source = ble_reader.current_adapter_name
-
-    # Get configured adapter names from config
-    if g.config and hasattr(g.config, 'bluetooth') and g.config.bluetooth.adapters:
-        for adapter in g.config.bluetooth.adapters:
-            sources.append({
-                'name': adapter.name,
-                'type': 'ble',
-                'active': adapter.name == active_source,
-            })
-
-    # Always add Mobile as a source option
-    sources.append({
-        'name': 'Mobile',
-        'type': 'relay',
-        'active': active_source == 'Mobile',
-    })
+    # Sources list for Android phone indicator UI
+    sources = [
+        {'name': 'BLE', 'type': 'ble', 'active': source == 'BLE'},
+        {'name': 'Mobile', 'type': 'relay', 'active': source == 'Mobile'},
+    ]
 
     return jsonify({
+        # Fields expected by Android app
+        'timestamp': datetime.now().isoformat(),
+        'last_reading_age_seconds': last_reading_age_seconds,
+        'source': source,
         'needs_relay': needs_relay,
-        'ble_connected': status.ble_status.connected,
-        'seconds_since_reading': seconds_since_reading,
+        'pi_ble_connected': status.ble_status.connected,
+        # Additional fields
         'relay_active': relay_active,
-        'pi_timestamp': datetime.now().isoformat(),
         'late_reading_threshold_seconds': late_threshold,
         'current_vitals': current_vitals,
         'therapy_active': therapy_active,
@@ -471,12 +448,6 @@ def _update_state_machine_with_relay(state_machine, reading: OxiReading) -> None
     # Clear disconnect tracking since we're getting data via relay
     if hasattr(state_machine, '_disconnect_start'):
         state_machine._disconnect_start = None
-
-    # Tell BLE reader to back off reconnection attempts
-    # Back off for 60 seconds - will be extended with each relay reading
-    if hasattr(state_machine, 'ble_reader') and state_machine.ble_reader:
-        if hasattr(state_machine.ble_reader, 'set_relay_backoff'):
-            state_machine.ble_reader.set_relay_backoff(active=True, duration_seconds=60)
 
     logger.debug(
         f"State machine updated with relay reading: "

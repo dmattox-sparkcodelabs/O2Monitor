@@ -227,26 +227,6 @@
                             <td><span class="input-with-unit"><input type="number" class="alert-resend" min="1" max="120" step="0.5" value="60"><span class="unit">m</span></span></td>
                             <td><button class="btn btn-sm btn-test" data-alert-type="battery_critical">Test</button></td>
                         </tr>
-                        <tr data-alert="adapter_disconnect">
-                            <td>
-                                <strong>Adapter Disconnect</strong>
-                                <span class="alert-desc">Bluetooth adapter unplugged</span>
-                            </td>
-                            <td><input type="checkbox" class="alert-enabled" checked></td>
-                            <td><span class="na">-</span></td>
-                            <td><span class="na">-</span></td>
-                            <td>
-                                <select class="alert-severity">
-                                    <option value="critical">Critical</option>
-                                    <option value="high">High</option>
-                                    <option value="warning" selected>Warning</option>
-                                    <option value="info">Info</option>
-                                </select>
-                            </td>
-                            <td><span class="na">-</span></td>
-                            <td><span class="input-with-unit"><input type="number" class="alert-resend" min="1" max="120" step="0.5" value="60"><span class="unit">m</span></span></td>
-                            <td><button class="btn btn-sm btn-test" data-alert-type="adapter_disconnect">Test</button></td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -268,22 +248,10 @@
             </div>
         </section>
 
-        <!-- Bluetooth & Timeouts -->
+        <!-- Bluetooth Timing -->
         <section class="settings-section">
-            <h2>Bluetooth & Timeouts</h2>
-            <p class="section-description">Configure Bluetooth adapters and failover behavior</p>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="adapter1-name">Adapter 1 Name</label>
-                    <input type="text" id="adapter1-name" placeholder="e.g., Hallway" value="Hallway">
-                    <span class="help-text">First Bluetooth adapter</span>
-                </div>
-                <div class="form-group">
-                    <label for="adapter2-name">Adapter 2 Name</label>
-                    <input type="text" id="adapter2-name" placeholder="e.g., Bedroom" value="Bedroom">
-                    <span class="help-text">Second Bluetooth adapter</span>
-                </div>
-            </div>
+            <h2>Bluetooth Timing</h2>
+            <p class="section-description">Configure Bluetooth connection behavior</p>
             <div class="form-row">
                 <div class="form-group">
                     <label for="read-interval">Read Interval</label>
@@ -300,24 +268,6 @@
                         <span class="unit">sec</span>
                     </span>
                     <span class="help-text">Reading is "late" after this time</span>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="switch-timeout">Adapter Switch Timeout</label>
-                    <span class="input-with-unit">
-                        <input type="number" id="switch-timeout" min="1" max="30" step="1" value="5">
-                        <span class="unit">min</span>
-                    </span>
-                    <span class="help-text">Switch adapters after no readings for this long</span>
-                </div>
-                <div class="form-group">
-                    <label for="bounce-interval">Bounce Interval</label>
-                    <span class="input-with-unit">
-                        <input type="number" id="bounce-interval" min="1" max="10" step="1" value="1">
-                        <span class="unit">min</span>
-                    </span>
-                    <span class="help-text">When switching, try each adapter this often</span>
                 </div>
             </div>
             <div class="form-row">
@@ -437,5 +387,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/settings.js') }}?v=14"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}?v=15"></script>
 {% endblock %}

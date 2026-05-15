@@ -3,6 +3,8 @@
     <string name="app_name">O2 Relay</string>
 
     <!-- Status messages -->
+    <string name="status_stopped">Status: STOPPED</string>
+    <string name="status_stopped_desc">Service not running</string>
     <string name="status_dormant">Status: DORMANT</string>
     <string name="status_dormant_desc">Pi is reading directly</string>
     <string name="status_scanning">Status: SCANNING</string>
@@ -30,7 +32,7 @@
     <!-- Settings -->
     <string name="server_not_configured">Server: Not configured</string>
     <string name="server_format">Server: %1$s</string>
-    <string name="device_mac_default">Device: C8:F1:6B:56:7B:F1</string>
+    <string name="device_mac_default">Device: D4:30:77:4B:0F:C7</string>
     <string name="device_mac_format">Device: %1$s</string>
     <string name="version_format">Version: %1$s</string>
 </resources>

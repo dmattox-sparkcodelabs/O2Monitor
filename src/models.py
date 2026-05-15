@@ -81,7 +81,6 @@ class AlertType(Enum):
 
     # Connectivity alerts
     DISCONNECT = "disconnect"          # Lost connection to oximeter (escalating)
-    ADAPTER_DISCONNECT = "adapter_disconnect"  # Bluetooth adapter unplugged (warning)
 
     # Therapy compliance alerts
     NO_THERAPY_AT_NIGHT = "no_therapy_at_night"  # AVAPS off during sleep hours (escalating)
@@ -89,6 +88,9 @@ class AlertType(Enum):
     # Battery alerts
     BATTERY_WARNING = "battery_warning"    # Battery getting low (warning)
     BATTERY_CRITICAL = "battery_critical"  # Battery critically low (high)
+
+    # Vision alerts
+    VISION_SLEEP_NO_MASK = "vision_sleep_no_mask"  # Eyes closed without mask (escalating)
 
     # System alerts
     SYSTEM_ERROR = "system_error"      # Internal error

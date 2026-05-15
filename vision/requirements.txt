@@ -1,0 +1,31 @@
+# =============================================================================
+# Vision Service Dependencies
+# O2Monitor - NOT FOR MEDICAL USE
+# =============================================================================
+
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Computer vision
+opencv-python==4.9.0.80
+numpy==1.26.3
+
+# Face recognition (InsightFace with ArcFace)
+insightface==0.7.3
+onnxruntime-gpu==1.16.3
+
+# Face mesh for eye detection (MediaPipe)
+mediapipe==0.10.9
+
+# Object detection for mask (YOLO)
+ultralytics==8.1.0
+
+# PyTorch with CUDA support
+# Install separately with: pip install torch==2.1.2+cu121 --index-url https://download.pytorch.org/whl/cu121
+# torch==2.1.2+cu121
+
+# Utilities
+python-multipart==0.0.6  # For file uploads

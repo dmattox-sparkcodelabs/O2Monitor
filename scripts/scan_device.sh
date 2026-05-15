@@ -1,14 +1,21 @@
 #!/bin/bash
 # Scan for O2 device to populate BlueZ cache
-MAC="${1:-C8:F1:6B:56:7B:F1}"
+MAC="${1:-D4:30:77:4B:0F:C7}"
 TIMEOUT="${2:-10}"
 
 echo "Scanning for $MAC..."
 
-# Use bluetoothctl with the correct adapter
+# Tune BLE connection parameters for better stability with weak signals
+# supervision_timeout: time before kernel gives up on connection (unit: 10ms, 600 = 6s)
+# conn_max_interval: max connection interval (unit: 1.25ms)
+if [ -d /sys/kernel/debug/bluetooth/hci0 ]; then
+    echo 600 > /sys/kernel/debug/bluetooth/hci0/supervision_timeout 2>/dev/null
+    echo 600 > /sys/kernel/debug/bluetooth/hci0/conn_max_interval 2>/dev/null
+    echo "BLE connection parameters tuned"
+fi
+
+# Scan to populate BlueZ cache (don't remove - keep existing cache warm)
 (
-    sleep 1
-    echo "select 10:A5:62:EC:E8:A5"
     sleep 1
     echo "scan on"
     sleep $TIMEOUT
