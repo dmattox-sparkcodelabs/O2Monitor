@@ -458,7 +458,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 19: Android App — Project Setup + API Client
+## ~~Slice 19: Android App — Project Setup + API Client~~ ✅
 
 **Goal:** Android app shell that connects to the API, fetches patient list, and lets the user select which patient to monitor.
 
