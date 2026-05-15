@@ -205,7 +205,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 9: Chart Time Range Toggle
+## ~~Slice 9: Chart Time Range Toggle~~ ✅
 
 **Goal:** User can switch the live chart between 1h, 6h, and 24h views.
 

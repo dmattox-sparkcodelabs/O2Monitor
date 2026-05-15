@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { fetchPatientStatus, fetchReadings } from "@/lib/api";
 import { PatientStatus, LatestReading, ReadingRecord } from "@/lib/types";
 import { usePatient } from "@/hooks/usePatient";
@@ -9,6 +9,7 @@ import VitalsCard, { spo2Color, hrColor, batteryColor } from "@/components/Vital
 import ConnectionStatus from "@/components/ConnectionStatus";
 import PatientSelector from "@/components/PatientSelector";
 import LiveChart from "@/components/LiveChart";
+import TimeRangeToggle from "@/components/TimeRangeToggle";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [historicalReadings, setHistoricalReadings] = useState<ReadingRecord[]>([]);
   const [realtimeReadings, setRealtimeReadings] = useState<LatestReading[]>([]);
+  const [chartHours, setChartHours] = useState(1);
 
   const poll = useCallback(async () => {
     if (!selectedId) return;
@@ -41,13 +43,17 @@ export default function Dashboard() {
 
     poll();
     const interval = setInterval(poll, POLL_INTERVAL_MS);
-
-    fetchReadings(selectedId, 1)
-      .then((res) => setHistoricalReadings(res.readings))
-      .catch(() => {});
-
     return () => clearInterval(interval);
   }, [poll, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    setHistoricalReadings([]);
+    setRealtimeReadings([]);
+    fetchReadings(selectedId, chartHours)
+      .then((res) => setHistoricalReadings(res.readings))
+      .catch(() => {});
+  }, [selectedId, chartHours]);
 
   const handleNewReading = useCallback((reading: LatestReading) => {
     setStatus((prev) => {
@@ -154,6 +160,9 @@ export default function Dashboard() {
               />
             </div>
 
+            <div className="flex justify-end mt-6 mb-2">
+              <TimeRangeToggle value={chartHours} onChange={setChartHours} />
+            </div>
             <LiveChart
               readings={historicalReadings}
               realtimeReadings={realtimeReadings}
