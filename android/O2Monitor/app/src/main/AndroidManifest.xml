@@ -27,6 +27,11 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".ble.BleService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
+
     </application>
 
 </manifest>

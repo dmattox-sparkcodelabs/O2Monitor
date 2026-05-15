@@ -74,6 +74,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
 
+    // LocalBroadcastManager
+    implementation(libs.androidx.localbroadcastmanager)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
