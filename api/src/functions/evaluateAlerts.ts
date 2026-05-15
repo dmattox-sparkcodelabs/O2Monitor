@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getContainer } from "../shared/cosmos";
 import { evaluateAllAlerts } from "../shared/alertEvaluator";
+import { getRoutingKey, triggerAlert, resolveAlert } from "../shared/pagerduty";
 import { Reading, Patient, Alert, DEFAULT_TTL } from "../shared/types";
 
 export async function evaluateAlertsForReading(reading: Reading): Promise<void> {
@@ -43,11 +44,13 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
     .fetchAll();
 
   const actions = evaluateAllAlerts(reading, recentReadings, patient.alertConfig, unresolvedAlerts);
+  const routingKey = getRoutingKey(patient.alertConfig.pagerdutyRoutingKey);
 
   for (const action of actions) {
     if (action.action === "create") {
       const now = new Date();
       const dateStr = now.toISOString().split("T")[0];
+      const dedupKey = `o2-${action.alertType}-${reading.patientId}-${dateStr}`;
       const alert: Alert = {
         id: uuidv4(),
         patientId: reading.patientId,
@@ -58,15 +61,26 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
         heartRate: action.heartRate,
         timestamp: now.toISOString(),
         resolvedAt: null,
-        pagerdutyDedupKey: `o2-${action.alertType}-${reading.patientId}-${dateStr}`,
+        pagerdutyDedupKey: dedupKey,
         ttl: DEFAULT_TTL,
       };
       await alertsContainer.items.create(alert);
+
+      if (routingKey) {
+        await triggerAlert(
+          routingKey, dedupKey, action.message, action.severity,
+          patient.name, patient.id, action.spo2, action.heartRate
+        );
+      }
     } else if (action.action === "resolve" && action.alertId) {
       const { resource } = await alertsContainer.item(action.alertId, reading.patientId).read<Alert>();
       if (resource) {
         resource.resolvedAt = new Date().toISOString();
         await alertsContainer.item(action.alertId, reading.patientId).replace(resource);
+
+        if (routingKey) {
+          await resolveAlert(routingKey, resource.pagerdutyDedupKey);
+        }
       }
     }
   }

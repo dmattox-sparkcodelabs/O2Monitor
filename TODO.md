@@ -275,7 +275,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 12: PagerDuty Integration
+## ~~Slice 12: PagerDuty Integration~~ ✅
 
 **Goal:** Alerts trigger PagerDuty incidents and auto-resolve them.
 
