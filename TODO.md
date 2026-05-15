@@ -348,7 +348,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 15: Alerts History Page
+## ~~Slice 15: Alerts History Page~~ ✅
 
 **Goal:** Dedicated page to browse alert history with filtering.
 

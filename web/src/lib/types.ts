@@ -46,3 +46,18 @@ export interface ReadingsResponse {
   readings: ReadingRecord[];
   count: number;
 }
+
+export interface AlertRecord {
+  id: string;
+  alertType: string;
+  severity: string;
+  message: string;
+  spo2: number | null;
+  heartRate: number | null;
+  timestamp: string;
+  resolvedAt: string | null;
+}
+
+export interface AlertsResponse {
+  alerts: AlertRecord[];
+}

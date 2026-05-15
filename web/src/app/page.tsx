@@ -11,6 +11,7 @@ import PatientSelector from "@/components/PatientSelector";
 import LiveChart from "@/components/LiveChart";
 import TimeRangeToggle from "@/components/TimeRangeToggle";
 import AlertBanner from "@/components/AlertBanner";
+import Nav from "@/components/Nav";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -140,13 +141,14 @@ export default function Dashboard() {
     <main className="flex-1 bg-gray-900 text-white">
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <div>
               <h1 className="text-xl font-semibold">O2 Monitor</h1>
               {selected && (
                 <span className="text-sm text-gray-400">{selected.name}</span>
               )}
             </div>
+            <Nav />
             <PatientSelector
               patients={patients}
               selectedId={selectedId}

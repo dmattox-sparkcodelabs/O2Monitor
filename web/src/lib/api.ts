@@ -1,4 +1,4 @@
-import { PatientStatus, PatientSummary, ReadingsResponse } from "./types";
+import { PatientStatus, PatientSummary, ReadingsResponse, AlertsResponse } from "./types";
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
@@ -37,6 +37,16 @@ export async function fetchReadings(patientId: string, hours: number = 1): Promi
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch readings: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchAlerts(patientId: string, days: number = 7, status?: string): Promise<AlertsResponse> {
+  let url = `/api/patients/${patientId}/alerts?days=${days}`;
+  if (status) url += `&status=${status}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch alerts: ${res.status}`);
   }
   return res.json();
 }
