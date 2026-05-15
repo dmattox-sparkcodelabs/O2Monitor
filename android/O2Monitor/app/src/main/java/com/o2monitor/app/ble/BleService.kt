@@ -260,11 +260,16 @@ class BleService : Service() {
             // Enable notifications on RX characteristic
             gatt.setCharacteristicNotification(rxChar, true)
             val descriptor = rxChar.getDescriptor(CCCD_UUID)
-            descriptor?.let {
-                it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                gatt.writeDescriptor(it)
-            } ?: run {
-                // No CCCD descriptor — proceed directly
+            if (descriptor != null) {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    @Suppress("DEPRECATION")
+                    gatt.writeDescriptor(descriptor)
+                }
+            } else {
                 handler.post { transitionToReading() }
             }
         }
@@ -320,9 +325,17 @@ class BleService : Service() {
     private fun sendPollCommand() {
         val tx = txCharacteristic ?: return
         val g = gatt ?: return
-        tx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        tx.value = BleProtocol.buildCommand(BleProtocol.CMD_READ_SENSORS)
-        g.writeCharacteristic(tx)
+        val cmd = BleProtocol.buildCommand(BleProtocol.CMD_READ_SENSORS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            g.writeCharacteristic(tx, cmd, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        } else {
+            @Suppress("DEPRECATION")
+            tx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            @Suppress("DEPRECATION")
+            tx.value = cmd
+            @Suppress("DEPRECATION")
+            g.writeCharacteristic(tx)
+        }
     }
 
     private fun scheduleStaleWatchdog() {
