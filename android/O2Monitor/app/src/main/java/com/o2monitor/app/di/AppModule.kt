@@ -2,6 +2,10 @@ package com.o2monitor.app.di
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.room.Room
+import com.o2monitor.app.data.AppDatabase
+import com.o2monitor.app.data.ReadingDao
+import com.o2monitor.app.data.ReadingRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,6 +23,26 @@ import javax.net.ssl.X509TrustManager
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
+        return Room.databaseBuilder(context, AppDatabase::class.java, "o2monitor.db")
+            .build()
+    }
+
+    @Provides
+    fun provideReadingDao(db: AppDatabase): ReadingDao = db.readingDao()
+
+    @Provides
+    @Singleton
+    fun provideReadingRepository(
+        dao: ReadingDao,
+        prefs: SharedPreferences,
+        httpClient: OkHttpClient
+    ): ReadingRepository {
+        return ReadingRepository(dao, prefs, httpClient)
+    }
 
     @Provides
     @Singleton

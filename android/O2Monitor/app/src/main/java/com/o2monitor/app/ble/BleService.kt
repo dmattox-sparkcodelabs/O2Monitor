@@ -23,9 +23,14 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.o2monitor.app.data.ReadingRepository
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class BleService : Service() {
@@ -33,12 +38,20 @@ class BleService : Service() {
     @Inject
     lateinit var prefs: SharedPreferences
 
+    @Inject
+    lateinit var repository: ReadingRepository
+
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var readingCount = 0
+
     companion object {
         const val ACTION_READING = "com.o2monitor.READING"
         const val EXTRA_SPO2 = "spo2"
         const val EXTRA_HEART_RATE = "heartRate"
         const val EXTRA_BATTERY_LEVEL = "batteryLevel"
         const val EXTRA_MOVEMENT = "movement"
+        const val EXTRA_QUEUE_COUNT = "queueCount"
+        const val EXTRA_UPLOAD_OK = "uploadOk"
         const val ACTION_STOP = "com.o2monitor.STOP"
 
         private const val NOTIFICATION_CHANNEL_ID = "o2monitor_ble"
@@ -354,18 +367,36 @@ class BleService : Service() {
     private fun onReadingReceived(reading: OxiReading) {
         latestReading = reading
         lastReadingTimeMs = System.currentTimeMillis()
+        readingCount++
 
         // Reset watchdog
         scheduleStaleWatchdog()
 
-        // Broadcast to UI
-        val intent = Intent(ACTION_READING).apply {
-            putExtra(EXTRA_SPO2, reading.spo2)
-            putExtra(EXTRA_HEART_RATE, reading.heartRate)
-            putExtra(EXTRA_BATTERY_LEVEL, reading.batteryLevel)
-            putExtra(EXTRA_MOVEMENT, reading.movement)
+        // Enqueue and upload in background
+        val patientId = prefs.getString("selected_patient_id", null)
+        serviceScope.launch {
+            if (patientId != null) {
+                repository.enqueue(patientId, reading)
+            }
+            val uploadOk = repository.flushToCloud()
+            val queueCount = repository.pendingCount()
+
+            // Prune expired readings every 100 readings
+            if (readingCount % 100 == 0) {
+                repository.pruneExpired()
+            }
+
+            // Broadcast to UI (on IO thread — LocalBroadcastManager is thread-safe)
+            val intent = Intent(ACTION_READING).apply {
+                putExtra(EXTRA_SPO2, reading.spo2)
+                putExtra(EXTRA_HEART_RATE, reading.heartRate)
+                putExtra(EXTRA_BATTERY_LEVEL, reading.batteryLevel)
+                putExtra(EXTRA_MOVEMENT, reading.movement)
+                putExtra(EXTRA_QUEUE_COUNT, queueCount)
+                putExtra(EXTRA_UPLOAD_OK, uploadOk)
+            }
+            LocalBroadcastManager.getInstance(this@BleService).sendBroadcast(intent)
         }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
 
         // Update notification
         updateNotification()

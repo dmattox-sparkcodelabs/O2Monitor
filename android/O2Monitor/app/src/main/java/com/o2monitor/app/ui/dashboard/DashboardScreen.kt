@@ -53,7 +53,9 @@ private data class OxiDisplayState(
     val spo2: Int? = null,
     val heartRate: Int? = null,
     val batteryLevel: Int? = null,
-    val movement: Int? = null
+    val movement: Int? = null,
+    val uploadOk: Boolean? = null,
+    val queueCount: Int = 0
 )
 
 private fun spo2Color(spo2: Int): Color = when {
@@ -84,7 +86,9 @@ fun DashboardScreen(
                         spo2 = intent.getIntExtra(BleService.EXTRA_SPO2, 0),
                         heartRate = intent.getIntExtra(BleService.EXTRA_HEART_RATE, 0),
                         batteryLevel = intent.getIntExtra(BleService.EXTRA_BATTERY_LEVEL, 0),
-                        movement = intent.getIntExtra(BleService.EXTRA_MOVEMENT, 0)
+                        movement = intent.getIntExtra(BleService.EXTRA_MOVEMENT, 0),
+                        uploadOk = intent.getBooleanExtra(BleService.EXTRA_UPLOAD_OK, false),
+                        queueCount = intent.getIntExtra(BleService.EXTRA_QUEUE_COUNT, 0)
                     )
                     bleState = BleState.READING
                 }
@@ -132,6 +136,22 @@ fun DashboardScreen(
                 else
                     MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
+
+            // Upload status
+            val uploadStatus = oxiState.uploadOk
+            if (uploadStatus != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val (uploadLabel, uploadColor) = if (uploadStatus) {
+                    "Uploading" to Color(0xFF4CAF50)
+                } else {
+                    "Offline (${oxiState.queueCount} queued)" to Color(0xFFFF9800)
+                }
+                Text(
+                    text = uploadLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = uploadColor
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
