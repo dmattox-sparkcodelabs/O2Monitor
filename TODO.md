@@ -56,7 +56,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 3: Web App Shell + Live Vitals Display
+## ~~Slice 3: Web App Shell + Live Vitals Display~~ ✅
 
 **Goal:** A web page that shows the latest vitals by polling the API. No auth, no real-time yet — just fetch and display.
 
