@@ -41,6 +41,22 @@ export async function fetchReadings(patientId: string, hours: number = 1): Promi
   return res.json();
 }
 
+export async function fetchPatient(patientId: string): Promise<unknown> {
+  const res = await fetch(`/api/patients/${patientId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to fetch patient: ${res.status}`);
+  return res.json();
+}
+
+export async function updatePatient(patientId: string, body: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(`/api/patients/${patientId}`, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Failed to update patient: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchAlerts(patientId: string, days: number = 7, status?: string): Promise<AlertsResponse> {
   let url = `/api/patients/${patientId}/alerts?days=${days}`;
   if (status) url += `&status=${status}`;

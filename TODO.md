@@ -374,7 +374,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 16: Settings Page — Alert Thresholds
+## ~~Slice 16: Settings Page — Alert Thresholds~~ ✅
 
 **Goal:** Patient owners can view and edit alert thresholds from the web UI.
 
