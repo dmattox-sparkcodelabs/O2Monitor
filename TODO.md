@@ -180,7 +180,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 8: Live Chart (SpO2 + HR)
+## ~~Slice 8: Live Chart (SpO2 + HR)~~ ✅
 
 **Goal:** Dashboard shows an auto-scrolling line chart of SpO2 and HR over the last hour.
 

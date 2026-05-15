@@ -1,4 +1,4 @@
-import { PatientStatus, PatientSummary } from "./types";
+import { PatientStatus, PatientSummary, ReadingsResponse } from "./types";
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
@@ -27,6 +27,16 @@ export async function fetchPatients(): Promise<PatientSummary[]> {
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch patients: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchReadings(patientId: string, hours: number = 1): Promise<ReadingsResponse> {
+  const res = await fetch(`/api/patients/${patientId}/readings?hours=${hours}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch readings: ${res.status}`);
   }
   return res.json();
 }

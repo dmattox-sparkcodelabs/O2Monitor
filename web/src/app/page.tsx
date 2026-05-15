@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { fetchPatientStatus } from "@/lib/api";
-import { PatientStatus, LatestReading } from "@/lib/types";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { fetchPatientStatus, fetchReadings } from "@/lib/api";
+import { PatientStatus, LatestReading, ReadingRecord } from "@/lib/types";
 import { usePatient } from "@/hooks/usePatient";
 import { useSignalR } from "@/hooks/useSignalR";
 import VitalsCard, { spo2Color, hrColor, batteryColor } from "@/components/VitalsCard";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import PatientSelector from "@/components/PatientSelector";
+import LiveChart from "@/components/LiveChart";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -16,6 +17,8 @@ export default function Dashboard() {
   const [status, setStatus] = useState<PatientStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [historicalReadings, setHistoricalReadings] = useState<ReadingRecord[]>([]);
+  const [realtimeReadings, setRealtimeReadings] = useState<LatestReading[]>([]);
 
   const poll = useCallback(async () => {
     if (!selectedId) return;
@@ -32,9 +35,17 @@ export default function Dashboard() {
   useEffect(() => {
     setStatus(null);
     setError(null);
+    setHistoricalReadings([]);
+    setRealtimeReadings([]);
     if (!selectedId) return;
+
     poll();
     const interval = setInterval(poll, POLL_INTERVAL_MS);
+
+    fetchReadings(selectedId, 1)
+      .then((res) => setHistoricalReadings(res.readings))
+      .catch(() => {});
+
     return () => clearInterval(interval);
   }, [poll, selectedId]);
 
@@ -48,6 +59,7 @@ export default function Dashboard() {
         deviceOnline: true,
       };
     });
+    setRealtimeReadings((prev) => [...prev, reading]);
     setLastUpdate(new Date());
   }, []);
 
@@ -119,27 +131,34 @@ export default function Dashboard() {
         )}
 
         {status && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <VitalsCard
-              label="SpO2"
-              value={reading?.spo2 ?? null}
-              unit="%"
-              colorFn={spo2Color}
-              large
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <VitalsCard
+                label="SpO2"
+                value={reading?.spo2 ?? null}
+                unit="%"
+                colorFn={spo2Color}
+                large
+              />
+              <VitalsCard
+                label="Heart Rate"
+                value={reading?.heartRate ?? null}
+                unit="bpm"
+                colorFn={hrColor}
+              />
+              <VitalsCard
+                label="Battery"
+                value={reading?.batteryLevel ?? null}
+                unit="%"
+                colorFn={batteryColor}
+              />
+            </div>
+
+            <LiveChart
+              readings={historicalReadings}
+              realtimeReadings={realtimeReadings}
             />
-            <VitalsCard
-              label="Heart Rate"
-              value={reading?.heartRate ?? null}
-              unit="bpm"
-              colorFn={hrColor}
-            />
-            <VitalsCard
-              label="Battery"
-              value={reading?.batteryLevel ?? null}
-              unit="%"
-              colorFn={batteryColor}
-            />
-          </div>
+          </>
         )}
 
         {lastUpdate && (
