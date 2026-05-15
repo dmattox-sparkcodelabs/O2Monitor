@@ -55,3 +55,18 @@ export interface ApiError {
 }
 
 export const DEFAULT_TTL = 7776000; // 90 days in seconds
+
+export const DEFAULT_ALERT_CONFIG: AlertConfig = {
+  spo2CriticalThreshold: 90,
+  spo2CriticalDurationSec: 30,
+  spo2WarningThreshold: 92,
+  spo2WarningDurationSec: 60,
+  hrHighThreshold: 120,
+  hrLowThreshold: 50,
+  hrDurationSec: 60,
+  batteryWarningThreshold: 25,
+  batteryCriticalThreshold: 10,
+  disconnectAlertSec: 120,
+  pagerdutyRoutingKey: "",
+  resendIntervalSec: 300,
+};

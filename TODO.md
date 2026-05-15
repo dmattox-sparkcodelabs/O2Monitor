@@ -143,7 +143,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 7: Patient CRUD + Access Model
+## ~~Slice 7: Patient CRUD + Access Model~~ ✅
 
 **Goal:** Users can create patients and the system enforces who can see what. Replaces the hardcoded test patient.
 

@@ -7,6 +7,13 @@ export interface LatestReading {
   deviceId?: string;
 }
 
+export interface PatientSummary {
+  id: string;
+  name: string;
+  deviceMac: string;
+  deviceName?: string;
+}
+
 export interface PatientStatus {
   patientId: string;
   patientName: string;

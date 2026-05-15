@@ -32,3 +32,21 @@ export function validateIngestRequest(body: unknown): ValidationError | null {
 
   return null;
 }
+
+export function validateCreatePatientRequest(body: unknown): ValidationError | null {
+  if (!body || typeof body !== "object") {
+    return { code: "INVALID_REQUEST", message: "Request body is required" };
+  }
+
+  const b = body as Record<string, unknown>;
+
+  if (typeof b.name !== "string" || b.name.length === 0) {
+    return { code: "INVALID_REQUEST", message: "name is required and must be a non-empty string" };
+  }
+
+  if (typeof b.deviceMac !== "string" || b.deviceMac.length === 0) {
+    return { code: "INVALID_REQUEST", message: "deviceMac is required and must be a non-empty string" };
+  }
+
+  return null;
+}

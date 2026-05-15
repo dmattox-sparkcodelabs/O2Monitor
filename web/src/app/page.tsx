@@ -3,34 +3,40 @@
 import { useEffect, useState, useCallback } from "react";
 import { fetchPatientStatus } from "@/lib/api";
 import { PatientStatus, LatestReading } from "@/lib/types";
+import { usePatient } from "@/hooks/usePatient";
 import { useSignalR } from "@/hooks/useSignalR";
 import VitalsCard, { spo2Color, hrColor, batteryColor } from "@/components/VitalsCard";
 import ConnectionStatus from "@/components/ConnectionStatus";
+import PatientSelector from "@/components/PatientSelector";
 
-const PATIENT_ID = "test-patient-1";
 const POLL_INTERVAL_MS = 15_000;
 
 export default function Dashboard() {
+  const { patients, selected, selectedId, selectPatient, loading: patientsLoading } = usePatient();
   const [status, setStatus] = useState<PatientStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const poll = useCallback(async () => {
+    if (!selectedId) return;
     try {
-      const data = await fetchPatientStatus(PATIENT_ID);
+      const data = await fetchPatientStatus(selectedId);
       setStatus(data);
       setError(null);
       setLastUpdate(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch");
     }
-  }, []);
+  }, [selectedId]);
 
   useEffect(() => {
+    setStatus(null);
+    setError(null);
+    if (!selectedId) return;
     poll();
     const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [poll]);
+  }, [poll, selectedId]);
 
   const handleNewReading = useCallback((reading: LatestReading) => {
     setStatus((prev) => {
@@ -46,21 +52,51 @@ export default function Dashboard() {
   }, []);
 
   const { connected: signalRConnected } = useSignalR({
-    patientId: PATIENT_ID,
+    patientId: selectedId ?? "",
     onNewReading: handleNewReading,
   });
 
   const reading = status?.latestReading ?? null;
 
+  if (patientsLoading) {
+    return (
+      <main className="flex-1 bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </main>
+    );
+  }
+
+  if (patients.length === 0) {
+    return (
+      <main className="flex-1 bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold mb-4">O2 Monitor</h1>
+          <p className="text-gray-400 mb-6">No patients yet — create one to get started.</p>
+          <p className="text-sm text-gray-600">
+            Use the API to create a patient:<br />
+            <code className="text-gray-500">POST /api/patients {`{"name":"Dad","deviceMac":"..."}`}</code>
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex-1 bg-gray-900 text-white">
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">O2 Monitor</h1>
-            {status && (
-              <span className="text-sm text-gray-400">{status.patientName}</span>
-            )}
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-semibold">O2 Monitor</h1>
+              {selected && (
+                <span className="text-sm text-gray-400">{selected.name}</span>
+              )}
+            </div>
+            <PatientSelector
+              patients={patients}
+              selectedId={selectedId}
+              onSelect={selectPatient}
+            />
           </div>
           {status && (
             <ConnectionStatus
@@ -78,8 +114,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!status && !error && (
-          <div className="text-center text-gray-500 py-20">Loading...</div>
+        {!status && !error && selectedId && (
+          <div className="text-center text-gray-500 py-20">Loading vitals...</div>
         )}
 
         {status && (
