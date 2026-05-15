@@ -431,7 +431,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 18: History Page — Readings Chart + Table
+## ~~Slice 18: History Page — Readings Chart + Table~~ ✅
 
 **Goal:** Browse historical SpO2/HR data with a date range picker.
 
