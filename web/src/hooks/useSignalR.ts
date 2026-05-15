@@ -11,13 +11,30 @@ interface ConnectionStatusEvent {
   secondsSinceReading: number | null;
 }
 
+interface AlertTriggeredEvent {
+  patientId: string;
+  id: string;
+  alertType: string;
+  severity: string;
+  message: string;
+}
+
+interface AlertResolvedEvent {
+  patientId: string;
+  id: string;
+  alertType: string;
+  resolvedAt: string;
+}
+
 interface UseSignalROptions {
   patientId: string;
   onNewReading: (reading: LatestReading) => void;
   onConnectionStatus?: (status: ConnectionStatusEvent) => void;
+  onAlertTriggered?: (alert: AlertTriggeredEvent) => void;
+  onAlertResolved?: (alert: AlertResolvedEvent) => void;
 }
 
-export function useSignalR({ patientId, onNewReading, onConnectionStatus }: UseSignalROptions) {
+export function useSignalR({ patientId, onNewReading, onConnectionStatus, onAlertTriggered, onAlertResolved }: UseSignalROptions) {
   const connectionRef = useRef<HubConnection | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -25,6 +42,10 @@ export function useSignalR({ patientId, onNewReading, onConnectionStatus }: UseS
   onNewReadingRef.current = onNewReading;
   const onConnectionStatusRef = useRef(onConnectionStatus);
   onConnectionStatusRef.current = onConnectionStatus;
+  const onAlertTriggeredRef = useRef(onAlertTriggered);
+  onAlertTriggeredRef.current = onAlertTriggered;
+  const onAlertResolvedRef = useRef(onAlertResolved);
+  onAlertResolvedRef.current = onAlertResolved;
 
   const connect = useCallback(async () => {
     if (connectionRef.current) return;
@@ -47,6 +68,18 @@ export function useSignalR({ patientId, onNewReading, onConnectionStatus }: UseS
       connection.on("connectionStatus", (data: ConnectionStatusEvent) => {
         if (data.patientId === patientId && onConnectionStatusRef.current) {
           onConnectionStatusRef.current(data);
+        }
+      });
+
+      connection.on("alertTriggered", (data: AlertTriggeredEvent) => {
+        if (data.patientId === patientId && onAlertTriggeredRef.current) {
+          onAlertTriggeredRef.current(data);
+        }
+      });
+
+      connection.on("alertResolved", (data: AlertResolvedEvent) => {
+        if (data.patientId === patientId && onAlertResolvedRef.current) {
+          onAlertResolvedRef.current(data);
         }
       });
 

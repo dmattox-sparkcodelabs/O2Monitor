@@ -14,13 +14,21 @@ export interface PatientSummary {
   deviceName?: string;
 }
 
+export interface ActiveAlert {
+  id: string;
+  alertType: string;
+  severity: string;
+  message: string;
+  timestamp: string;
+}
+
 export interface PatientStatus {
   patientId: string;
   patientName: string;
   latestReading: LatestReading | null;
   secondsSinceReading: number | null;
   deviceOnline: boolean;
-  activeAlerts: unknown[];
+  activeAlerts: ActiveAlert[];
 }
 
 export interface ReadingRecord {

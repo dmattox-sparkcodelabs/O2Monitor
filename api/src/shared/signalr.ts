@@ -22,3 +22,25 @@ export function buildNewReadingMessage(
     }],
   };
 }
+
+export function buildAlertTriggeredMessage(
+  patientId: string,
+  alert: { id: string; alertType: string; severity: string; message: string }
+): SignalRMessage {
+  return {
+    target: "alertTriggered",
+    groupName: `patient:${patientId}`,
+    arguments: [{ patientId, id: alert.id, alertType: alert.alertType, severity: alert.severity, message: alert.message }],
+  };
+}
+
+export function buildAlertResolvedMessage(
+  patientId: string,
+  alert: { id: string; alertType: string; resolvedAt: string }
+): SignalRMessage {
+  return {
+    target: "alertResolved",
+    groupName: `patient:${patientId}`,
+    arguments: [{ patientId, id: alert.id, alertType: alert.alertType, resolvedAt: alert.resolvedAt }],
+  };
+}

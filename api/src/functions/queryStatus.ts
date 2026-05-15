@@ -2,7 +2,7 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/fu
 import { getContainer } from "../shared/cosmos";
 import { authenticateRequest } from "../shared/auth";
 import { buildStatusResponse } from "../shared/statusBuilder";
-import { Reading, Patient } from "../shared/types";
+import { Reading, Patient, Alert } from "../shared/types";
 
 async function queryStatus(
   request: HttpRequest,
@@ -48,8 +48,16 @@ async function queryStatus(
     })
     .fetchAll();
 
+  const alertsContainer = getContainer("alerts");
+  const { resources: unresolvedAlerts } = await alertsContainer.items
+    .query<Alert>({
+      query: "SELECT * FROM a WHERE a.patientId = @patientId AND a.resolvedAt = null",
+      parameters: [{ name: "@patientId", value: patientId }],
+    })
+    .fetchAll();
+
   const latestReading = resources.length > 0 ? resources[0] : null;
-  const status = buildStatusResponse(patient, latestReading, new Date());
+  const status = buildStatusResponse(patient, latestReading, unresolvedAlerts, new Date());
 
   return {
     status: 200,

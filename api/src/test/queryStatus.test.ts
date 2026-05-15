@@ -1,5 +1,5 @@
 import { buildStatusResponse } from "../shared/statusBuilder";
-import { Reading, Patient } from "../shared/types";
+import { Reading, Patient, Alert } from "../shared/types";
 
 const testPatient: Patient = {
   id: "test-patient-1",
@@ -44,7 +44,7 @@ describe("buildStatusResponse", () => {
   it("returns correct fields when a reading exists", () => {
     const now = new Date();
     const reading = makeReading({ timestamp: now.toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(result.patientId).toBe("test-patient-1");
     expect(result.patientName).toBe("Dad (Test)");
@@ -61,7 +61,7 @@ describe("buildStatusResponse", () => {
 
   it("returns null latestReading when no readings exist", () => {
     const now = new Date();
-    const result = buildStatusResponse(testPatient, null, now);
+    const result = buildStatusResponse(testPatient, null, [], now);
 
     expect(result.patientId).toBe("test-patient-1");
     expect(result.patientName).toBe("Dad (Test)");
@@ -74,7 +74,7 @@ describe("buildStatusResponse", () => {
     const now = new Date();
     const oldTime = new Date(now.getTime() - 130_000); // 130 seconds ago
     const reading = makeReading({ timestamp: oldTime.toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(result.deviceOnline).toBe(false);
     expect(result.secondsSinceReading).toBeGreaterThanOrEqual(130);
@@ -84,7 +84,7 @@ describe("buildStatusResponse", () => {
     const now = new Date();
     const recentTime = new Date(now.getTime() - 10_000); // 10 seconds ago
     const reading = makeReading({ timestamp: recentTime.toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(result.deviceOnline).toBe(true);
     expect(result.secondsSinceReading).toBeGreaterThanOrEqual(10);
@@ -95,7 +95,7 @@ describe("buildStatusResponse", () => {
     const now = new Date();
     const boundaryTime = new Date(now.getTime() - 120_000);
     const reading = makeReading({ timestamp: boundaryTime.toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(result.deviceOnline).toBe(true);
   });
@@ -104,7 +104,7 @@ describe("buildStatusResponse", () => {
     const now = new Date();
     const overTime = new Date(now.getTime() - 121_000);
     const reading = makeReading({ timestamp: overTime.toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(result.deviceOnline).toBe(false);
   });
@@ -112,8 +112,32 @@ describe("buildStatusResponse", () => {
   it("computes secondsSinceReading as whole number", () => {
     const now = new Date();
     const reading = makeReading({ timestamp: new Date(now.getTime() - 45_500).toISOString() });
-    const result = buildStatusResponse(testPatient, reading, now);
+    const result = buildStatusResponse(testPatient, reading, [], now);
 
     expect(Number.isInteger(result.secondsSinceReading)).toBe(true);
+  });
+
+  it("includes active alerts in response", () => {
+    const now = new Date();
+    const reading = makeReading({ timestamp: now.toISOString() });
+    const alerts: Alert[] = [{
+      id: "alert-1",
+      patientId: "test-patient-1",
+      alertType: "spo2_critical",
+      severity: "critical",
+      message: "SpO2 dropped to 88%",
+      spo2: 88,
+      heartRate: 72,
+      timestamp: now.toISOString(),
+      resolvedAt: null,
+      pagerdutyDedupKey: "test",
+      ttl: 7776000,
+    }];
+    const result = buildStatusResponse(testPatient, reading, alerts, now);
+
+    expect(result.activeAlerts).toHaveLength(1);
+    expect(result.activeAlerts[0].alertType).toBe("spo2_critical");
+    expect(result.activeAlerts[0].severity).toBe("critical");
+    expect(result.activeAlerts[0].message).toBe("SpO2 dropped to 88%");
   });
 });

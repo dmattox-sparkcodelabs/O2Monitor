@@ -57,13 +57,16 @@ async function ingestReading(
   const container = getContainer("readings");
   await container.items.create(reading);
 
-  context.extraOutputs.set(signalROutput, [buildNewReadingMessage(reading.patientId, reading)]);
+  const signalRMessages = [buildNewReadingMessage(reading.patientId, reading)];
 
   try {
-    await evaluateAlertsForReading(reading);
+    const alertMessages = await evaluateAlertsForReading(reading);
+    signalRMessages.push(...alertMessages);
   } catch (err) {
     context.log(`Alert evaluation failed: ${err}`);
   }
+
+  context.extraOutputs.set(signalROutput, signalRMessages);
 
   context.log(`Ingested reading ${id} for patient ${reading.patientId}: SpO2=${reading.spo2} HR=${reading.heartRate}`);
 

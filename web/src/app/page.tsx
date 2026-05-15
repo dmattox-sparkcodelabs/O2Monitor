@@ -10,6 +10,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import PatientSelector from "@/components/PatientSelector";
 import LiveChart from "@/components/LiveChart";
 import TimeRangeToggle from "@/components/TimeRangeToggle";
+import AlertBanner from "@/components/AlertBanner";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -80,10 +81,34 @@ export default function Dashboard() {
     });
   }, []);
 
+  const handleAlertTriggered = useCallback((alert: { id: string; alertType: string; severity: string; message: string }) => {
+    setStatus((prev) => {
+      if (!prev) return prev;
+      const exists = prev.activeAlerts.some((a) => a.id === alert.id);
+      if (exists) return prev;
+      return {
+        ...prev,
+        activeAlerts: [...prev.activeAlerts, { ...alert, timestamp: new Date().toISOString() }],
+      };
+    });
+  }, []);
+
+  const handleAlertResolved = useCallback((event: { id: string }) => {
+    setStatus((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        activeAlerts: prev.activeAlerts.filter((a) => a.id !== event.id),
+      };
+    });
+  }, []);
+
   const { connected: signalRConnected } = useSignalR({
     patientId: selectedId ?? "",
     onNewReading: handleNewReading,
     onConnectionStatus: handleConnectionStatus,
+    onAlertTriggered: handleAlertTriggered,
+    onAlertResolved: handleAlertResolved,
   });
 
   const reading = status?.latestReading ?? null;
@@ -138,6 +163,10 @@ export default function Dashboard() {
       </header>
 
       <div className="max-w-4xl mx-auto p-6">
+        {status && status.activeAlerts.length > 0 && (
+          <AlertBanner alerts={status.activeAlerts} />
+        )}
+
         {error && (
           <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 mb-6 text-red-200">
             {error}

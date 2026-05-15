@@ -1,6 +1,14 @@
-import { Reading, Patient } from "./types";
+import { Reading, Patient, Alert } from "./types";
 
 const ONLINE_THRESHOLD_SEC = 120;
+
+export interface ActiveAlertSummary {
+  id: string;
+  alertType: string;
+  severity: string;
+  message: string;
+  timestamp: string;
+}
 
 export interface StatusResponse {
   patientId: string;
@@ -14,14 +22,23 @@ export interface StatusResponse {
   } | null;
   secondsSinceReading: number | null;
   deviceOnline: boolean;
-  activeAlerts: unknown[];
+  activeAlerts: ActiveAlertSummary[];
 }
 
 export function buildStatusResponse(
   patient: Patient,
   latestReading: Reading | null,
+  unresolvedAlerts: Alert[],
   now: Date
 ): StatusResponse {
+  const activeAlerts: ActiveAlertSummary[] = unresolvedAlerts.map((a) => ({
+    id: a.id,
+    alertType: a.alertType,
+    severity: a.severity,
+    message: a.message,
+    timestamp: a.timestamp,
+  }));
+
   if (!latestReading) {
     return {
       patientId: patient.id,
@@ -29,7 +46,7 @@ export function buildStatusResponse(
       latestReading: null,
       secondsSinceReading: null,
       deviceOnline: false,
-      activeAlerts: [],
+      activeAlerts,
     };
   }
 
@@ -48,6 +65,6 @@ export function buildStatusResponse(
     },
     secondsSinceReading,
     deviceOnline: secondsSinceReading <= ONLINE_THRESHOLD_SEC,
-    activeAlerts: [],
+    activeAlerts,
   };
 }

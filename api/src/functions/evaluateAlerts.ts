@@ -3,9 +3,11 @@ import { getContainer } from "../shared/cosmos";
 import { evaluateAllAlerts } from "../shared/alertEvaluator";
 import { evaluateReconnect } from "../shared/disconnectEvaluator";
 import { getRoutingKey, triggerAlert, resolveAlert } from "../shared/pagerduty";
+import { buildAlertTriggeredMessage, buildAlertResolvedMessage, SignalRMessage } from "../shared/signalr";
 import { Reading, Patient, Alert, DEFAULT_TTL } from "../shared/types";
 
-export async function evaluateAlertsForReading(reading: Reading): Promise<void> {
+export async function evaluateAlertsForReading(reading: Reading): Promise<SignalRMessage[]> {
+  const signalRMessages: SignalRMessage[] = [];
   const patientsContainer = getContainer("patients");
   const readingsContainer = getContainer("readings");
   const alertsContainer = getContainer("alerts");
@@ -13,10 +15,10 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
   let patient: Patient;
   try {
     const { resource } = await patientsContainer.item(reading.patientId, reading.patientId).read<Patient>();
-    if (!resource) return;
+    if (!resource) return signalRMessages;
     patient = resource;
   } catch {
-    return;
+    return signalRMessages;
   }
 
   const maxDuration = Math.max(
@@ -70,6 +72,8 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
       };
       await alertsContainer.items.create(alert);
 
+      signalRMessages.push(buildAlertTriggeredMessage(reading.patientId, alert));
+
       if (routingKey) {
         await triggerAlert(
           routingKey, dedupKey, action.message, action.severity,
@@ -82,10 +86,16 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
         resource.resolvedAt = new Date().toISOString();
         await alertsContainer.item(action.alertId, reading.patientId).replace(resource);
 
+        signalRMessages.push(buildAlertResolvedMessage(reading.patientId, {
+          id: resource.id, alertType: resource.alertType, resolvedAt: resource.resolvedAt,
+        }));
+
         if (routingKey) {
           await resolveAlert(routingKey, resource.pagerdutyDedupKey);
         }
       }
     }
   }
+
+  return signalRMessages;
 }

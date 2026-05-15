@@ -323,7 +323,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 14: Alert Banner on Dashboard
+## ~~Slice 14: Alert Banner on Dashboard~~ ✅
 
 **Goal:** Active alerts show as a prominent banner on the web dashboard, appearing and disappearing in real-time.
 
