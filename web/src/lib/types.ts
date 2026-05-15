@@ -1,9 +1,10 @@
 export interface LatestReading {
+  patientId?: string;
   spo2: number;
   heartRate: number;
   batteryLevel: number;
   timestamp: string;
-  deviceId: string;
+  deviceId?: string;
 }
 
 export interface PatientStatus {

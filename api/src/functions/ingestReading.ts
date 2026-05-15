@@ -1,8 +1,15 @@
-import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
+import { app, HttpRequest, HttpResponseInit, InvocationContext, output } from "@azure/functions";
 import { v4 as uuidv4 } from "uuid";
 import { getContainer } from "../shared/cosmos";
 import { validateIngestRequest } from "../shared/validation";
+import { buildNewReadingMessage } from "../shared/signalr";
 import { Reading, DEFAULT_TTL } from "../shared/types";
+
+const signalROutput = output.generic({
+  type: "signalR",
+  name: "signalRMessages",
+  hubName: "o2monitor",
+});
 
 async function ingestReading(
   request: HttpRequest,
@@ -45,6 +52,8 @@ async function ingestReading(
   const container = getContainer("readings");
   await container.items.create(reading);
 
+  context.extraOutputs.set(signalROutput, [buildNewReadingMessage(reading.patientId, reading)]);
+
   context.log(`Ingested reading ${id} for patient ${reading.patientId}: SpO2=${reading.spo2} HR=${reading.heartRate}`);
 
   return {
@@ -57,5 +66,6 @@ app.http("ingestReading", {
   methods: ["POST"],
   authLevel: "anonymous",
   route: "readings",
+  extraOutputs: [signalROutput],
   handler: ingestReading,
 });

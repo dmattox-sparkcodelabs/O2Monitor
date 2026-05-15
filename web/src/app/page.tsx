@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { fetchPatientStatus } from "@/lib/api";
-import { PatientStatus } from "@/lib/types";
+import { PatientStatus, LatestReading } from "@/lib/types";
+import { useSignalR } from "@/hooks/useSignalR";
 import VitalsCard, { spo2Color, hrColor, batteryColor } from "@/components/VitalsCard";
 import ConnectionStatus from "@/components/ConnectionStatus";
 
@@ -12,14 +13,14 @@ const POLL_INTERVAL_MS = 15_000;
 export default function Dashboard() {
   const [status, setStatus] = useState<PatientStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastPoll, setLastPoll] = useState<Date | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const poll = useCallback(async () => {
     try {
       const data = await fetchPatientStatus(PATIENT_ID);
       setStatus(data);
       setError(null);
-      setLastPoll(new Date());
+      setLastUpdate(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch");
     }
@@ -30,6 +31,24 @@ export default function Dashboard() {
     const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [poll]);
+
+  const handleNewReading = useCallback((reading: LatestReading) => {
+    setStatus((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        latestReading: reading,
+        secondsSinceReading: 0,
+        deviceOnline: true,
+      };
+    });
+    setLastUpdate(new Date());
+  }, []);
+
+  const { connected: signalRConnected } = useSignalR({
+    patientId: PATIENT_ID,
+    onNewReading: handleNewReading,
+  });
 
   const reading = status?.latestReading ?? null;
 
@@ -87,9 +106,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {lastPoll && (
+        {lastUpdate && (
           <p className="text-xs text-gray-600 text-center mt-6">
-            Last updated: {lastPoll.toLocaleTimeString()}
+            Last updated: {lastUpdate.toLocaleTimeString()}
+            {signalRConnected ? " (live)" : " (polling)"}
           </p>
         )}
       </div>

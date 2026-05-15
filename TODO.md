@@ -81,7 +81,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 4: SignalR Real-Time Push
+## ~~Slice 4: SignalR Real-Time Push~~ ✅
 
 **Goal:** Vitals update instantly on the web page without polling. Prove the SignalR pipeline works.
 
