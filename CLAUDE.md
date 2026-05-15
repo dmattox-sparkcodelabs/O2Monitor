@@ -1,4 +1,8 @@
-# O2 Monitor - Claude Code Notes
+SparkTalk identity: Big_Bubba-O2Monitor-Claude
+ClaudeTalk identity: Big_Bubba-O2Monitor
+Shared environment - python, node, etc. instances must be killed with caution
+
+# O2 Monitor v2 - Claude Code Notes
 
 > **DISCLAIMER: NOT FOR MEDICAL USE**
 >
@@ -13,12 +17,29 @@
 >
 > **NEVER use `git commit --no-verify`** - If the hook blocks you, fix the problem, don't bypass it.
 
+## Project Status
+
+**v2 Redesign** — Starting fresh. The Pi-based backend and Windows capture app are retired.
+
+New architecture: Android-first BLE reader → Azure cloud backend → Web + Android frontends.
+
+## Archive
+
+All v1 code lives in `archive/`. Reference it for:
+- BLE protocol (`archive/windows/protocol.py`) — cleanest implementation of Checkme O2 Max protocol
+- Android BLE + relay app (`archive/android/`) — proven Kotlin BLE code
+- Alert logic & thresholds (`archive/src/alert_evaluator.py`, `archive/src/config.py`)
+- Data models (`archive/src/models.py`)
+- Vision service (`archive/vision/`) — camera-based sleep monitoring (may revisit later)
+- Original design docs (`archive/DESIGN.md`, `archive/VISION.md`, `archive/TODO.md`)
+
 ## Secrets Location
 
 Credentials are stored in `.secrets.md` (gitignored). Contains:
 - GitHub PAT
 - PagerDuty routing key
 - Healthchecks.io ping URL
+- Azure credentials (TBD)
 
 **If `.secrets.md` doesn't exist**, ask the user to create it or check their local setup.
 
@@ -26,85 +47,22 @@ Credentials are stored in `.secrets.md` (gitignored). Contains:
 
 - Repo: https://github.com/dmattox-sparkcodelabs/O2Monitor
 
-## Remote Development (from WSL)
+## Hardware
 
-The Pi (O2Monitor) is at `10.6.0.7`. SSH key auth is set up for passwordless access.
+- **Oximeters**: Checkme O2 Max (Wellue/Viatom) — two identical units
+  - Dad's device MAC: C8:F1:6B:56:7B:F1
+  - Dev device MAC: D4:30:77:4B:0F:C7
+- **Phones**: Android (BLE readers + app UI)
 
-**SSH Alias** (in `~/.ssh/config`):
-```
-Host o2pi
-    HostName 10.6.0.7
-    User dmattox
-```
+## Key BLE Details
 
-**SSHFS Mount** - Pi's project is mounted locally for direct file access:
-- Local: `/home/dmatt/projects/RemoteOxygen/O2Monitor/`
-- Remote: `dmattox@10.6.0.7:/home/dmattox/projects/O2Monitor`
+- Device names: "O2M ####" pattern
+- BLE-GATT UUIDs:
+  - RX (device→host): `0734594a-a8e7-4b1a-a6b1-cd5243059a57`
+  - TX (host→device): `8b00ace7-eb0b-49b0-bbe9-9aee0a26e1a3`
+- Command 0x17: real-time sensor reading (SpO2, HR, battery, movement)
+- CRC-8-CCITT with polynomial 0x07
+- See `archive/windows/protocol.py` for full protocol docs
 
-If mount is stale or disconnected:
-```bash
-# Unmount if stuck
-fusermount -u /home/dmatt/projects/RemoteOxygen/O2Monitor
-
-# Remount
-sshfs dmattox@10.6.0.7:/home/dmattox/projects/O2Monitor /home/dmatt/projects/RemoteOxygen/O2Monitor -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3
-```
-
-**Service commands** (via SSH):
-```bash
-ssh o2pi "sudo systemctl restart o2monitor"
-ssh o2pi "sudo journalctl -u o2monitor -n 50 --no-pager"
-```
-
-## Running the App
-
-**First time only** - create acknowledgment file:
-```bash
-echo "I understand this is not a medical device" > ACKNOWLEDGED_NOT_FOR_MEDICAL_USE.txt
-```
-
-Then use the scripts in the project root:
-```bash
-./start.sh    # Start the app
-./stop.sh     # Stop the app
-./restart.sh  # Restart the app
-```
-
-These scripts auto-detect whether the systemd service is installed and use the appropriate method.
-
-**Logs:**
-- If using systemd: `journalctl -u o2monitor -f`
-- If running manually: `/tmp/o2monitor.log`
-
-## Important: Bounce app after web changes
-
-Flask caches templates and static files. After modifying any files in `src/web/`, restart the app:
-```bash
-./restart.sh
-```
-
-## Key Settings
-
-- BLE polling: 5 seconds
-- Late reading threshold: 30 seconds
-- AVAPS on: >30W in 5-min window (otherwise off)
-- Kasa plug IP: 192.168.4.126
-- Oximeter MAC: C8:F1:6B:56:7B:F1
-
-## Multi-Instance Development
-
-Multiple Claude Code instances may work on this project simultaneously (e.g., Pi for backend, Windows for Android app).
-
-**File ownership:**
-- **Pi instance**: `src/` (Python backend, Flask API)
-- **Windows instance**: `android/` (Android app)
-
-**Coordination rules:**
-1. Always `git pull origin main` before starting work
-2. Commit and push when done with a logical chunk
-3. If editing shared files, coordinate via commit messages
-4. Check `android/TODO.md` for current task status
-
-**Android app docs:**
-- Design: `android/DESIGN.md`
-- Tasks: `android/TODO.md`
+## Process Cleanup
+NEVER use blanket taskkill on python/node. Only kill processes on YOUR assigned ports.

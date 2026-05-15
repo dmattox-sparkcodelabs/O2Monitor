@@ -1,0 +1,7 @@
+[Unit]
+Description=Bluetooth Watchdog - Reset BT stack when BLE is wedged
+After=o2monitor.service bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/dmattox/projects/O2Monitor/scripts/bt_watchdog.sh 5

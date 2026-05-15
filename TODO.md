@@ -1,1080 +1,738 @@
-# O2 Monitor - Implementation Todo List
+# O2 Monitor v2 — Implementation Tasks
 
-> **DISCLAIMER: NOT FOR MEDICAL USE**
->
-> This project is a proof of concept and educational exercise only. It is NOT a certified medical device and should NOT be relied upon for medical monitoring, diagnosis, or treatment decisions. This system has not been validated, tested, or approved for clinical use. Do not use this system as a substitute for professional medical care or FDA-approved monitoring equipment. The authors assume no liability for any use of this software.
+> **NOT FOR MEDICAL USE** — Proof of concept only.
 
----
-
-**Project:** O2 Monitoring System for OHS Patient (Proof of Concept)
-**Created:** 2026-01-11
-**Status:** Phase 14 (Vision Service) Implementation Complete - Hardware Testing Required
+Each task is a vertical slice delivering one testable behavior. Every task produces something a user can exercise and verify end-to-end.
 
 ---
 
-## Legend
+## ~~Slice 1: Hello World API + Cosmos DB~~ ✅
 
-- `[ ]` Not started
-- `[~]` In progress
-- `[x]` Completed
-- `[!]` Blocked or needs attention
-- `[-]` Skipped/Not needed
-- `[H]` Requires hardware testing (user must run manually)
+**Goal:** Prove Azure Functions + Cosmos DB work together. One function, one container, one curl command.
 
----
+**What to build:**
+- Initialize `api/` as Azure Functions v4 Node.js 20 TypeScript project
+- `api/src/shared/cosmos.ts` — Cosmos client from connection string env var
+- `api/src/shared/types.ts` — `Reading` and `Patient` TypeScript interfaces (from `docs/specs/data-model.md`)
+- `api/src/functions/ingestReading.ts` — HTTP POST trigger, validates `patientId`, `spo2`, `heartRate`, `batteryLevel`, `timestamp` fields, writes to `readings` container, returns 201
+- Create Cosmos DB `readings` container (partition key `/patientId`, TTL enabled)
+- Manually create one test patient document in a `patients` container (partition key `/id`)
+- `api/local.settings.json` (gitignored) with Cosmos connection string
+- `api/package.json`, `api/tsconfig.json`, `api/host.json`
 
-## Phase 1: Core Infrastructure
+**Spec references:**
+- Data model: `docs/specs/data-model.md` — `readings` container schema
+- API: `docs/specs/api.md` — `POST /api/readings`
 
-### 1.1 Environment Setup
-- [x] Create Python virtual environment with `--system-site-packages`
-- [x] Verify PyGObject/GLib available in venv
-- [x] Install BLE-GATT and pydbus
-- [x] Test BLE connectivity to Checkme O2 Max
-- [x] Create working test script (`test_working.py`)
-- [x] Install remaining Python dependencies
-  - [x] python-kasa (smart plug)
-  - [x] pygame (audio)
-  - [x] flask, flask-login (web)
-  - [x] bcrypt (auth)
-  - [x] aiohttp, requests (HTTP)
-  - [x] pyyaml, python-dotenv (config)
-  - [x] aiosqlite (database)
-- [x] Create project directory structure:
-  ```
-  O2Monitor/
-  ├── src/
-  │   ├── __init__.py
-  │   ├── main.py
-  │   ├── config.py
-  │   ├── models.py
-  │   ├── state_machine.py
-  │   ├── ble_reader.py
-  │   ├── avaps_monitor.py
-  │   ├── alerting.py
-  │   ├── heartbeat.py
-  │   ├── database.py
-  │   └── web/
-  │       ├── __init__.py
-  │       ├── app.py
-  │       ├── routes.py
-  │       ├── api.py
-  │       ├── auth.py
-  │       ├── static/
-  │       │   ├── css/
-  │       │   └── js/
-  │       └── templates/
-  ├── data/
-  ├── logs/
-  ├── sounds/
-  ├── tests/
-  ├── config.yaml
-  ├── .env.example
-  └── requirements.txt
-  ```
-
-### 1.2 Configuration System
-- [x] Create `config.yaml` template with all settings
-  - [x] Device settings (oximeter MAC, plug IP)
-  - [x] Threshold settings (SpO2, AVAPS power)
-  - [x] Alerting settings (PagerDuty, audio, Alexa)
-  - [x] Web settings (host, port)
-  - [x] Auth settings (users, session timeout)
-  - [x] Database settings (path, retention)
-  - [x] Logging settings
-  - [x] mock_mode setting for testing
-- [x] Create `.env.example` with placeholder secrets
-- [x] Implement `config.py` configuration loader
-  - [x] Load YAML file
-  - [x] Substitute environment variables (${VAR} syntax)
-  - [x] Validate required settings
-  - [x] Provide typed access to config values (dataclasses)
-  - [x] Support MOCK_HARDWARE env var override
-
-### 1.3 Data Models
-- [x] Create `models.py` with data classes
-  - [x] `OxiReading` - SpO2, HR, battery, movement, timestamp, is_valid
-  - [x] `AVAPSState` - Enum (ON, OFF, UNKNOWN)
-  - [x] `MonitorState` - Enum (INITIALIZING, DISCONNECTED, THERAPY_ACTIVE, NORMAL, LOW_SPO2_WARNING, ALARM, SILENCED)
-  - [x] `Alert` - id, type, severity, message, timestamp, vitals, acknowledged
-  - [x] `AlertType` - Enum (SPO2_LOW, BLE_DISCONNECT, SYSTEM_ERROR, TEST)
-  - [x] `AlertSeverity` - Enum (CRITICAL, WARNING, INFO)
-  - [x] `SystemStatus` - comprehensive status snapshot
-  - [x] `BLEStatus` - BLE connection status (added)
+**Verify:**
+1. `cd api && npm install && npm start` — Functions host starts
+2. POST via curl:
+   ```bash
+   curl -X POST http://localhost:7071/api/readings \
+     -H "Content-Type: application/json" \
+     -d '{"patientId":"test-patient-1","spo2":97,"heartRate":72,"batteryLevel":85,"movement":0,"timestamp":"2026-05-15T09:30:00Z","source":"live","deviceId":"curl-test"}'
+   ```
+3. Response: `201 { "id": "..." }`
+4. Verify document exists in Cosmos DB (Data Explorer or Cosmos emulator UI)
 
 ---
 
-## Phase 2: Device Integration
+## Slice 2: Query Latest Status
 
-### 2.1 BLE Reader Module (`ble_reader.py`)
-- [x] Convert `test_working.py` to proper module
-- [x] Create `CheckmeO2Reader` class
-  - [x] `__init__(mac_address, callback, read_interval=10)`
-  - [x] `connect()` - blocking with retry loop
-  - [x] `disconnect()` - cleanup BLE connection
-  - [x] `start()` - begin monitoring (blocking, runs GLib loop)
-  - [x] `stop()` - signal stop and cleanup
-  - [x] `request_reading()` - send command 0x17
-  - [x] `handle_notification()` - parse incoming data
-  - [x] `_process_reading()` - extract SpO2/HR from payload
-  - [x] `_calc_crc()` - CRC-8 calculation
-  - [x] `_build_command()` - construct command packet
-- [x] Implement callback mechanism
-  - [x] Call user callback with `OxiReading` on each valid reading
-  - [x] Call error callback on connection loss
-- [x] Add connection state tracking
-  - [x] `is_connected` property
-  - [x] `last_reading` property
-  - [x] `battery_level` property
-  - [x] `connection_attempts` counter
-- [x] Add logging throughout
-- [x] Handle graceful shutdown (signal handling)
-- [x] Test module standalone
-  - [x] Verify readings come through callback
-  - [x] Verify reconnection works after manual disconnect
-  - [x] Verify clean shutdown
-- [x] Add `get_reader()` factory function for mock/real selection
+**Goal:** Read back what we wrote. Prove the query path works.
 
-### 2.2 AVAPS Monitor Module (`avaps_monitor.py`)
-- [H] Test Kasa KP115 connection
-  - [H] Find plug IP address on network (use `python src/avaps_monitor.py --discover`)
-  - [H] Verify python-kasa can connect
-  - [H] Read power consumption
-- [H] Determine AVAPS power thresholds
-  - [H] Measure power when AVAPS is ON (active therapy)
-  - [H] Measure power when AVAPS is OFF (standby)
-  - [x] Set ON threshold (e.g., >3W) - configured in config.yaml
-  - [x] Set OFF threshold (e.g., <2W) - configured in config.yaml
-- [x] Create `AVAPSMonitor` class
-  - [x] `__init__(plug_ip, on_threshold, off_threshold)`
-  - [x] `async get_power_watts()` - read current power
-  - [x] `async is_on()` - returns bool based on thresholds
-  - [x] `async get_state()` - returns AVAPSState enum
-- [x] Add error handling for network issues
-  - [x] Return UNKNOWN state on timeout
-  - [x] Implement retry logic
-  - [x] Log network errors
-- [x] Add caching to reduce poll frequency
-  - [x] Cache reading for 2 seconds (CACHE_DURATION_SECONDS)
-  - [x] Invalidate on explicit refresh
-- [~] Test module standalone
-  - [x] Mock mode tests pass
-  - [H] Verify real power readings with hardware
-  - [x] Verify state detection (mock)
-  - [x] Verify network error handling
-- [x] Add `get_monitor()` factory function for mock/real selection
-- [x] Add `discover_plugs()` for network device discovery
+**What to build:**
+- `api/src/functions/queryStatus.ts` — `GET /api/patients/:id/status`, returns latest reading + `secondsSinceReading` + `deviceOnline` (true if last reading < 120s ago)
+- Reads from `readings` container, ordered by timestamp DESC, limit 1
+
+**Spec references:**
+- API: `docs/specs/api.md` — `GET /api/patients/:id/status`
+
+**Verify:**
+1. POST a reading (Slice 1)
+2. `curl http://localhost:7071/api/patients/test-patient-1/status`
+3. Response includes `latestReading` with correct SpO2/HR values and `secondsSinceReading`
+4. Wait 2+ minutes without posting — `deviceOnline` flips to `false`
 
 ---
 
-## Phase 3: Database Layer
+## Slice 3: Web App Shell + Live Vitals Display
 
-### 3.1 Database Schema (`database.py`)
-- [x] Create SQLite database initialization
-  - [x] Create `readings` table
-  - [x] Create `alerts` table
-  - [x] Create `system_events` table
-  - [x] Create `users` table
-  - [x] Create `sessions` table
-  - [x] Add indexes for timestamp columns
-- [x] Implement `Database` class
-  - [x] `__init__(db_path)`
-  - [x] `async initialize()` - create tables if not exist
-  - [x] `async close()` - close connection pool
+**Goal:** A web page that shows the latest vitals by polling the API. No auth, no real-time yet — just fetch and display.
 
-### 3.2 Reading Operations
-- [x] `async insert_reading(reading: OxiReading, avaps_state: AVAPSState)`
-- [x] `async get_readings(start_time, end_time, limit=1000)`
-- [x] `async get_latest_reading()`
-- [x] `async get_reading_stats(start_time, end_time)` - min, max, avg
+**What to build:**
+- Initialize `web/` as Next.js 14+ App Router project with TypeScript, Tailwind CSS
+- `web/src/lib/types.ts` — shared TypeScript interfaces
+- `web/src/lib/api.ts` — fetch wrapper, calls `GET /api/patients/:id/status`
+- `web/src/app/page.tsx` — dashboard page, hardcoded patient ID for now
+- `web/src/components/VitalsCard.tsx` — displays SpO2 (large, color-coded), HR, battery
+- Polls `/api/patients/:id/status` every 15 seconds
+- Color coding: green ≥95%, yellow 92-94%, orange 90-91%, red <90%
 
-### 3.3 Alert Operations
-- [x] `async insert_alert(alert: Alert)`
-- [x] `async get_alerts(start_time, end_time, limit=100)`
-- [x] `async get_active_alerts()` - unacknowledged
-- [x] `async acknowledge_alert(alert_id, acknowledged_by)`
-- [x] `async resolve_alert(alert_id)`
+**Spec references:**
+- Web: `docs/specs/web-app.md` — Dashboard page, VitalsCard component, color coding
 
-### 3.4 System Event Operations
-- [x] `async log_event(event_type, message, metadata=None)`
-- [x] `async get_events(start_time, end_time, event_type=None)`
-
-### 3.5 User/Session Operations
-- [x] `async get_user(username)`
-- [x] `async create_session(user_id)` (also added create_user)
-- [x] `async get_session(session_id)`
-- [x] `async delete_session(session_id)`
-- [x] `async cleanup_expired_sessions()`
-
-### 3.6 Data Retention
-- [x] `async cleanup_old_data()`
-  - [x] Delete readings older than 30 days
-  - [x] Delete alerts older than 365 days
-  - [x] Delete events older than 90 days
-- [x] Schedule cleanup to run daily (runs every 24h in state_machine.py)
+**Verify:**
+1. `cd web && npm install && npm run dev`
+2. API running (Slice 1), POST a reading with spo2=97
+3. Open `http://localhost:3000` — see green SpO2 card showing 97%, HR, battery
+4. POST a reading with spo2=89
+5. Page updates within 15s — SpO2 card turns red, shows 89%
 
 ---
 
-## Phase 4: Alerting System
+## Slice 4: SignalR Real-Time Push
 
-### 4.1 Local Audio Alerting
-- [x] ~~Obtain/create alarm sound files~~ - Not needed, tones generated programmatically
-- [x] Test pygame audio on Raspberry Pi
-  - [x] Install SDL2 mixer: `sudo apt install libsdl2-mixer-2.0-0`
-  - [x] Verify speakers connected and working
-  - [x] Test volume control
-- [x] Implement audio alert functions (AudioAlert class)
-  - [x] `play_alarm()` - play loud repeating alarm with severity-based tones
-  - [x] `play_alert()` - play single warning sound
-  - [x] `stop_alarm()` - stop current playback
-  - [x] `set_volume(level)` - adjust volume 0-100
-  - [x] `_generate_tone()` - programmatic tone generation (no external files)
-  - [x] Different tone patterns per severity (critical=fast high beeps, high=double beeps, etc.)
-- [x] Implement TTS announcements
-  - [x] Install espeak: `sudo apt install espeak`
-  - [x] `speak()` method for TTS output
-  - [x] Alert-specific messages ("Oxygen level critical at 85 percent")
-  - [x] Repeating alarms include TTS every 30 seconds
+**Goal:** Vitals update instantly on the web page without polling. Prove the SignalR pipeline works.
 
-### 4.2 PagerDuty Integration
-- [x] Set up PagerDuty account/service
-  - [x] Create service for O2 Monitor
-  - [x] Get Events API v2 routing key
-  - [x] Configure escalation policy
-- [x] Implement PagerDuty client (PagerDutyClient class)
-  - [x] `async trigger_incident(summary, severity, details)`
-  - [x] `async acknowledge_incident(dedup_key)`
-  - [x] `async resolve_incident(dedup_key)`
-- [x] Create dedup key strategy
-  - [x] SpO2 alarms: `o2-spo2-{date}`
-  - [x] BLE disconnect: `o2-ble-{date}`
-- [x] Test incident creation and resolution
+**What to build:**
+- Create Azure SignalR Service (free tier) or configure local emulator
+- `api/src/shared/signalr.ts` — helper to send messages to SignalR groups
+- `api/src/functions/negotiate.ts` — SignalR negotiation endpoint
+- Update `ingestReading.ts` to push `newReading` event after Cosmos write
+- `web/src/hooks/useSignalR.ts` — connect to SignalR, subscribe to `newReading` events for patient group
+- Update dashboard to use SignalR for live updates (keep polling as fallback)
 
-### 4.3 Healthchecks.io Integration
-- [x] Create Healthchecks.io account
-  - [x] Create check with 1-minute period
-  - [x] Set 3-minute grace period
-  - [x] Configure alert channels (email, PagerDuty)
-- [x] Implement heartbeat client (HealthchecksClient class)
-  - [x] `async send_ping(status="ok")`
-  - [x] `async send_fail(message)`
-  - [x] `async send_start()` - signal check starting
-- [x] Test ping delivery and failure detection
+**Spec references:**
+- API: `docs/specs/api.md` — `POST /api/negotiate`, SignalR Events table
+- Architecture: `docs/specs/architecture.md` — Azure SignalR Service section
 
-### 4.4 Alert Manager (`alerting.py`)
-- [x] Create `AlertManager` class
-  - [x] `__init__(config)`
-  - [x] `async trigger_alarm(alert)` - local + PagerDuty
-  - [x] `async trigger_local_only(alert)` - local audio only
-  - [x] `async resolve_alert(alert_id)`
-  - [x] `silence(duration_minutes)` - temporary silence
-  - [x] `unsilence()` - cancel silence
-- [x] Implement silence logic
-  - [x] Track silence end time
-  - [x] `is_silenced` property
-  - [x] `silence_remaining_seconds` property
-- [x] Track active alerts
-  - [x] `active_alerts` property
-  - [x] Prevent duplicate alerts for same condition
-
-### 4.5 Alexa Integration (Optional/Future)
-- [ ] Research Alexa notification options
-  - [ ] Notify Me skill
-  - [ ] Alexa Routines
-  - [ ] Home Assistant integration
-- [ ] Implement if viable
+**Verify:**
+1. Open `http://localhost:3000` in browser
+2. POST a reading via curl
+3. Vitals card updates within 1-2 seconds (no 15s polling delay)
+4. Open browser dev tools Network tab — confirm SignalR WebSocket connection active
+5. Kill SignalR connection (disconnect network briefly) — confirm fallback to polling resumes
 
 ---
 
-## Phase 5: State Machine
+## Slice 5: Azure AD B2C Setup + API Auth Middleware
 
-### 5.1 Core State Machine (`state_machine.py`)
-- [x] Create `O2MonitorStateMachine` class
-  - [x] `__init__(config, ble_reader, avaps_monitor, alert_manager, database)`
-  - [x] `async run()` - main monitoring loop
-  - [x] `async evaluate_state()` - determine current state
-  - [x] `async handle_state_transition(old, new)` - side effects
-  - [x] `stop()` - signal shutdown
-- [x] Implement state properties
-  - [x] `current_state` - MonitorState enum
-  - [x] `low_spo2_start_time` - when SpO2 dropped below threshold
-  - [x] `low_spo2_duration` - timedelta since drop
-  - [x] `get_status()` - comprehensive status snapshot
+**Goal:** API endpoints reject unauthenticated requests. No web UI changes yet — test with curl + manually obtained tokens.
 
-### 5.2 State Evaluation Logic
-- [x] INITIALIZING -> DISCONNECTED/NORMAL/THERAPY_ACTIVE
-  - [x] Wait for BLE connection
-  - [x] Check AVAPS state
-- [x] DISCONNECTED handling
-  - [x] Track disconnect duration
-  - [x] Alert after 3 minutes
-  - [x] Transition to other states on reconnect
-- [x] THERAPY_ACTIVE handling
-  - [x] Suppress SpO2 alarms when AVAPS on
-  - [x] Continue monitoring silently
-  - [x] Log readings to database
-- [x] NORMAL -> LOW_SPO2_WARNING
-  - [x] Trigger when SpO2 < 90% AND AVAPS off
-  - [x] Start 30-second countdown
-- [x] LOW_SPO2_WARNING -> ALARM
-  - [x] Trigger when 30 seconds elapsed
-  - [x] SpO2 still < 90%
-  - [x] AVAPS still off
-- [x] LOW_SPO2_WARNING -> NORMAL
-  - [x] Cancel if SpO2 >= 90%
-  - [x] Cancel if AVAPS turned on
-- [x] ALARM handling
-  - [x] Trigger local + remote alerts
-  - [x] Continue alarming until resolved
-  - [x] Resolve when SpO2 recovers or AVAPS on
-- [x] SILENCED handling
-  - [x] Suppress local audio
-  - [x] Still send PagerDuty for critical
-  - [x] Auto-unsilence after duration (via AlertManager)
+**What to build:**
+- Set up Azure AD B2C tenant with sign-up/sign-in user flow (email/password)
+- Register "O2Monitor API" and "O2Monitor Web" app registrations
+- `api/src/shared/auth.ts` — JWT validation middleware (validates B2C tokens, extracts user OID)
+- Create `users` container in Cosmos DB
+- Auto-create user document on first authenticated API call
+- Apply auth middleware to `ingestReading` and `queryStatus`
+- `api/src/functions/getUserProfile.ts` — `GET /api/users/me` (returns user profile)
 
-### 5.3 Integration with Components
-- [x] BLE reader callback integration
-  - [x] Receive readings from callback
-  - [x] Update current vitals
-  - [x] Log to database
-- [x] AVAPS polling integration
-  - [x] Poll every 5 seconds
-  - [x] Update current state
-- [x] Heartbeat integration
-  - [x] Send ping every 60 seconds
-  - [x] Include status metadata
+**Spec references:**
+- Architecture: `docs/specs/architecture.md` — Authentication & Authorization
+- Data model: `docs/specs/data-model.md` — `users` container
+- API: `docs/specs/api.md` — Authentication section, `GET /api/users/me`
 
-### 5.4 Error Handling
-- [x] Handle BLE disconnect during operation
-- [x] Handle AVAPS monitor network failure
-- [x] Handle database write failure
-- [x] Handle PagerDuty API failure (in AlertManager)
-- [x] Log all errors with context
+**Verify:**
+1. `curl http://localhost:7071/api/patients/test-patient-1/status` — returns 401
+2. Obtain a B2C token (via browser login or ROPC flow for testing)
+3. `curl -H "Authorization: Bearer <token>" http://localhost:7071/api/patients/test-patient-1/status` — returns 200
+4. `curl -H "Authorization: Bearer <token>" http://localhost:7071/api/users/me` — returns user profile with email
+5. Check Cosmos DB `users` container — user document was auto-created
 
 ---
 
-## Phase 6: Web Dashboard
+## Slice 6: Web App Login Flow
 
-### 6.1 Flask Application Setup (`web/app.py`)
-- [x] Create Flask application factory
-- [x] Configure session management
-- [x] Set up CSRF protection (via session secret)
-- [x] Configure logging
-- [x] Set up static file serving
-- [x] Configure template rendering
+**Goal:** Web app requires login. Unauthenticated users see a login page, authenticated users see the dashboard.
 
-### 6.2 Authentication (`web/auth.py`)
-- [x] Implement login route
-  - [x] Username/password form
-  - [x] bcrypt password verification
-  - [x] Session creation
-  - [x] Rate limiting (5 attempts = 15-min lockout)
-- [x] Implement logout route
-  - [x] Session destruction
-  - [x] Redirect to login
-- [x] Implement `@login_required` decorator
-- [x] Implement session validation middleware
-- [x] Create password hashing utility script (see config.yaml comment)
+**What to build:**
+- Add `@azure/msal-react` to Next.js
+- `web/src/lib/auth.ts` — MSAL config with B2C tenant/client IDs
+- `web/src/hooks/useAuth.ts` — login, logout, token acquisition
+- `web/src/app/login/page.tsx` — "Sign In" button + disclaimer text
+- Auth guard in `web/src/app/layout.tsx` — redirect unauthenticated users to `/login`
+- Pass Bearer token on all API calls in `web/src/lib/api.ts`
+- Add user name + logout button to page header
 
-### 6.3 Dashboard Routes (`web/routes.py`)
-- [x] `/` - Redirect to dashboard or login
-- [x] `/login` - Login page (via auth blueprint)
-- [x] `/logout` - Logout action (via auth blueprint)
-- [x] `/dashboard` - Main real-time display
-- [x] `/history` - Historical graphs
-- [x] `/alerts` - Alert log
-- [x] `/settings` - Configuration panel (all logged-in users)
+**Spec references:**
+- Web: `docs/specs/web-app.md` — Authentication section, `/login` page
 
-### 6.4 API Endpoints (`web/api.py`)
-- [x] `GET /api/status` - Current system status
-  - [x] State, vitals, AVAPS, BLE status, uptime
-- [x] `GET /api/readings` - Recent readings
-  - [x] Pagination support
-  - [x] Time range filtering
-- [x] `GET /api/readings/range` - Readings for date range
-- [x] `GET /api/alerts` - Alert history
-- [x] `POST /api/alerts/test` - Trigger test alert
-- [x] `POST /api/alerts/silence` - Silence alerts
-- [x] `POST /api/alerts/unsilence` - Cancel silence
-- [x] `GET /api/config` - Current thresholds
-- [x] `PUT /api/config` - Update thresholds (persists to config.yaml)
-- [x] `POST /api/alerts/<id>/acknowledge` - Acknowledge alert
-- [x] `POST /api/devices/discover` - Discover Kasa smart plugs
-
-### 6.5 Templates
-- [x] `base.html` - Base template with navigation
-- [x] `login.html` - Login form
-- [x] `dashboard.html` - Real-time dashboard
-  - [x] SpO2 gauge/display
-  - [x] Heart rate display
-  - [x] AVAPS status indicator
-  - [x] BLE connection status
-  - [x] Battery level
-  - [x] System state indicator
-  - [x] Live chart (last hour)
-  - [x] Test/silence buttons
-- [x] `history.html` - Historical charts
-  - [x] Date range picker
-  - [x] SpO2 trend chart
-  - [x] Heart rate trend chart
-  - [x] Event markers
-- [x] `alerts.html` - Alert log table
-  - [x] Filter by type/severity
-  - [x] Acknowledge buttons
-- [x] `settings.html` - Configuration panel
-  - [x] Threshold adjustments
-  - [x] Alert settings (PagerDuty, Healthchecks)
-  - [x] Settings persist to config.yaml
-  - [-] User management (not implemented - add via config file)
-
-### 6.6 Static Assets
-- [x] `static/css/style.css` - Dashboard styling
-  - [x] Responsive design
-  - [x] Color coding for states
-  - [x] Touch-friendly buttons
-- [x] `static/js/dashboard.js` - Real-time updates
-  - [x] Polling for live data (5-second interval)
-  - [x] Chart.js for graphs
-  - [x] Auto-refresh
-  - [x] Refresh progress bar indicator
-  - [x] 12-hour time format (not military time)
-- [x] `static/js/history.js` - Historical charts
-  - [x] 12-hour time format
-  - [x] Stats display (avg, min, max)
-- [x] `static/js/alerts.js` - Alert management
-- [x] `static/js/settings.js` - Configuration management
-
-### 6.7 Real-time Updates
-- [-] Implement SSE (Server-Sent Events) endpoint - chose polling instead
-- [x] Implement polling approach
-  - [x] Poll `/api/status` every 5 seconds
-- [x] Update dashboard without page refresh
+**Verify:**
+1. Open `http://localhost:3000` — redirected to `/login`
+2. Click "Sign In" — B2C login page appears
+3. Create account or sign in
+4. Redirected to dashboard — vitals display (if readings exist)
+5. Open incognito window → `http://localhost:3000` — redirected to `/login` (no session leak)
+6. Click logout button — returned to `/login`
 
 ---
 
-## Phase 7: Main Application
+## Slice 7: Patient CRUD + Access Model
 
-### 7.1 Entry Point (`main.py`)
-- [x] Parse command-line arguments
-  - [x] `--config` - config file path
-  - [x] `--debug` - enable debug mode
-  - [x] `--mock` - force mock mode
-- [x] Load configuration
-- [x] Initialize logging
-- [x] Initialize database
-- [x] Initialize components
-  - [x] BLE reader
-  - [x] AVAPS monitor
-  - [x] Alert manager
-  - [x] Heartbeat (via AlertManager)
-- [x] Start web server (Phase 6 - integrated)
-  - [x] Flask runs in background thread
-  - [x] Accessible at http://0.0.0.0:5000 (configurable)
-- [x] Start state machine (main loop)
-- [x] Handle signals (SIGTERM, SIGINT)
-- [x] Graceful shutdown sequence
+**Goal:** Users can create patients and the system enforces who can see what. Replaces the hardcoded test patient.
 
-### 7.2 Threading/Concurrency Model
-- [x] Determined concurrency approach
-  - [x] Option C: asyncio with threads where needed
-  - [x] BLE reader uses separate thread for mock, GLib for real
-  - [x] State machine runs in asyncio event loop
-- [x] Implement thread-safe data sharing
-  - [x] Current vitals (via state machine properties)
-  - [x] Current state
-  - [x] Alert status
-- [x] Handle component communication
+**What to build:**
+- Create `patientAccess` container in Cosmos DB
+- `api/src/functions/managePatients.ts`:
+  - `POST /api/patients` — create patient, auto-assign caller as `owner`
+  - `GET /api/patients` — list patients user has access to
+  - `GET /api/patients/:id` — get patient details (checks access)
+- Update `ingestReading` and `queryStatus` to check `patientAccess` (user must have any role)
+- Update web dashboard to fetch patient list and show a patient selector dropdown
+- `web/src/hooks/usePatient.ts` — selected patient state (persisted to localStorage)
+- `web/src/components/PatientSelector.tsx` — dropdown in header
+- Empty state: "No patients yet — create one to get started" with create button
 
-### 7.3 Logging Configuration
-- [x] Set up rotating file handler
-  - [x] `logs/o2monitor.log`
-  - [x] Max 10MB per file
-  - [x] Keep 5 backups (configurable)
-- [x] Set log levels per module
-- [x] Include timestamp, level, module, message
-- [x] Log to console in debug mode
+**Spec references:**
+- Data model: `docs/specs/data-model.md` — `patients` and `patientAccess` containers
+- API: `docs/specs/api.md` — `POST /api/patients`, `GET /api/patients`, `GET /api/patients/:id`
+- Web: `docs/specs/web-app.md` — PatientSelector component
+
+**Verify:**
+1. Log in — see "No patients" message
+2. Create a patient via curl (with Bearer token):
+   ```bash
+   curl -X POST http://localhost:7071/api/patients \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{"name":"Dad","deviceMac":"C8:F1:6B:56:7B:F1"}'
+   ```
+3. Refresh dashboard — patient appears in selector dropdown
+4. POST a reading for that patient — vitals display
+5. `GET /api/patients` — returns patient with `role: "owner"`
+6. Try querying a random patient ID — returns 403
 
 ---
 
-## Phase 8: Deployment
+## Slice 8: Live Chart (SpO2 + HR)
 
-### 8.1 systemd Service ✅
-- [x] Create service file `o2monitor.service`
-- [x] Configure auto-restart on failure
-- [x] Configure restart delay (10 seconds)
-- [x] Set up environment (PYTHONUNBUFFERED)
-- [x] Create install script `install-service.sh`
-- [x] Install and test service
-- [x] Verified working after reboot
+**Goal:** Dashboard shows an auto-scrolling line chart of SpO2 and HR over the last hour.
 
-### 8.2 Installation Script (`install.sh`)
-- [x] Check prerequisites (Python, BlueZ, GLib, SDL2, espeak)
-- [x] Create virtual environment with system-site-packages
-- [x] Install Python dependencies
-- [x] Create directory structure (data/, logs/)
-- [x] Copy default configuration from config.example.yaml
-- [x] Check for acknowledgment file
-- [x] Prompt for BLE device trust
-- [x] Optional systemd service install
-- [x] Print setup instructions
+**What to build:**
+- Add Recharts dependency to web app
+- `web/src/components/LiveChart.tsx` — dual Y-axis line chart (SpO2 left, HR right)
+- Loads last 1 hour of readings on mount via `GET /api/patients/:id/readings?hours=1`
+- Appends new data points from SignalR `newReading` events
+- SpO2 threshold zones: red background below 90%, yellow 90-92%
+- `api/src/functions/queryReadings.ts` — `GET /api/patients/:id/readings?hours=N&limit=N`
 
-### 8.3 Security Hardening
-- [-] Set database file permissions (600) - Not needed for single-user home use
-- [-] Set config file permissions (600) - Not needed for single-user home use
-- [-] Set log directory permissions - Not needed for single-user home use
-- [-] Configure firewall (if needed) - Router handles this
-- [x] Review and remove debug settings - Flask runs in production mode
+**Spec references:**
+- API: `docs/specs/api.md` — `GET /api/patients/:id/readings`
+- Web: `docs/specs/web-app.md` — LiveChart component, threshold zones
 
-### 8.4 Backup Strategy
-- [-] Script to backup database - Not needed (30-day retention, not clinically relevant)
-- [x] Script to backup configuration (`backup-config.sh`)
-- [x] Auto-prunes to last 10 backups
+**Verify:**
+1. Seed 1 hour of readings (script that POSTs one every 5s with varying SpO2 88-99)
+2. Open dashboard — chart shows the full hour of data with dual axes
+3. Threshold zones visible (red/yellow bands)
+4. POST a new reading — chart appends the point in real-time
+5. Chart auto-scrolls to show most recent data
 
 ---
 
-## Phase 9: Testing
+## Slice 9: Chart Time Range Toggle
 
-### 9.1 Unit Tests
-- [ ] Test state machine transitions
-- [ ] Test threshold calculations
-- [ ] Test CRC calculation
-- [ ] Test packet parsing
-- [ ] Test authentication logic
-- [ ] Test database operations
+**Goal:** User can switch the live chart between 1h, 6h, and 24h views.
 
-### 9.2 Integration Tests
-- [ ] Test BLE connection/reconnection
-- [ ] Test AVAPS state detection
-- [ ] Test PagerDuty incident creation
-- [ ] Test Healthchecks.io ping
-- [ ] Test database persistence
+**What to build:**
+- Add toggle buttons (1h | 6h | 24h) above the chart
+- On toggle: re-fetch readings for the selected range
+- Continue appending SignalR data regardless of selected range
+- Adjust chart X-axis scale and tick formatting per range
 
-### 9.3 End-to-End Tests
-- [ ] Simulate SpO2 drop -> alarm sequence
-- [ ] Simulate BLE disconnect -> reconnect
-- [ ] Test dashboard login flow
-- [ ] Test alert silence functionality
-- [ ] Test web API endpoints
+**Spec references:**
+- Web: `docs/specs/web-app.md` — Dashboard time range toggle
 
-### 9.4 Failure Simulation
-- [ ] Kill BLE connection unexpectedly
-- [ ] Block network to Kasa plug
-- [ ] Invalid PagerDuty key
-- [ ] Database disk full simulation
-
-### 9.5 Load/Duration Testing
-- [ ] Run for 24+ hours continuously
-- [ ] Verify no memory leaks
-- [ ] Verify database growth is reasonable
-- [ ] Verify reconnection works over time
+**Verify:**
+1. Seed 24 hours of readings
+2. Default view: 1h — chart shows ~720 points
+3. Click 6h — chart re-renders with 6 hours of data, X-axis rescales
+4. Click 24h — full day visible
+5. POST a new reading — appends to whichever view is active
 
 ---
 
-## Phase 10: Enhanced Alerting System (NEW - Priority)
+## Slice 10: Alert Evaluation (SpO2 Critical)
 
-### 10.1 Alert Configuration Model Updates
-- [x] Update `models.py` with new alert types
-  - [x] Add `AlertType.SPO2_CRITICAL`, `AlertType.SPO2_WARNING`
-  - [x] Add `AlertType.HR_HIGH`, `AlertType.HR_LOW`
-  - [x] Add `AlertType.BATTERY_WARNING`, `AlertType.BATTERY_CRITICAL`
-  - [x] Add `AlertType.NO_THERAPY_AT_NIGHT`
-  - [x] Add `AlertSeverity.HIGH` (between CRITICAL and WARNING)
-  - [x] Add `pagerduty_severity` property to AlertSeverity enum
-  - [x] Update `alerting.py` to use new severity mapping
-  - [x] Update `state_machine.py` to use SPO2_CRITICAL and DISCONNECT
-  - [x] Removed legacy SPO2_LOW and BLE_DISCONNECT (no backward compat needed)
-- [x] Update `config.py` with alert config structure
-  - [x] Add `TherapyModeConfig` dataclass (threshold, duration, enabled)
-  - [x] Add `SleepHoursConfig` dataclass with `is_sleep_hours()` method
-  - [x] Add config classes: `SpO2CriticalAlertConfig`, `SpO2WarningAlertConfig`, `HRAlertConfig`, `DisconnectAlertConfig`, `NoTherapyAtNightAlertConfig`, `BatteryAlertConfig`
-  - [x] Add `AlertsConfig` container with all alert configs
-  - [x] Add `alerts` field to main `Config` class
-  - [x] Verified nested dataclass loading works correctly
-  - [x] Added `alerts` section to config.yaml with all defaults
+**Goal:** When SpO2 stays below threshold for the configured duration, an alert document appears in Cosmos. Start with just one alert type to prove the change feed pipeline.
 
-### 10.2 Alert Evaluation Logic
-- [x] Create `alert_evaluator.py` module
-  - [x] `AlertEvaluator` class with `evaluate()` method
-  - [x] `_evaluate_spo2()` - check SpO2 thresholds (critical/warning)
-  - [x] `_evaluate_hr()` - check HR thresholds (high/low)
-  - [x] `_evaluate_disconnect()` - check disconnect escalation
-  - [x] `_evaluate_battery()` - check battery thresholds
-  - [x] `_evaluate_no_therapy_at_night()` - check sleep hours compliance
-- [x] Track duration counters via `AlertConditionTracker` class
-  - [x] Start/reset/duration_seconds methods for each condition
-  - [x] Deduplication via `fired_alerts` dict with cooldown
-- [x] Implement sleep hours logic
-  - [x] `SleepHoursConfig.is_sleep_hours()` handles overnight ranges
-  - [x] Escalate severity: info_minutes → warning_minutes
-  - [x] Reset when therapy turns ON or sleep hours end
-- [x] All conditions auto-clear when values recover
+**What to build:**
+- `api/src/functions/evaluateAlerts.ts` — Cosmos change feed trigger on `readings` container
+- On each new reading: load patient's `alertConfig`, query last N seconds of readings
+- Evaluate `spo2_critical` only: if all readings in window below threshold → create alert in `alerts` container
+- Auto-resolve: if latest reading is above threshold and an unresolved alert exists → set `resolvedAt`
+- Create `alerts` container in Cosmos DB (partition key `/patientId`, TTL enabled)
+- Deduplication: skip if unresolved alert of same type already exists
 
-### 10.3 AlertManager Updates
-- [x] Update `AlertManager` to use new alert types
-- [x] Map severity to PagerDuty using `AlertSeverity.pagerduty_severity` property
-  - [x] critical → "critical"
-  - [x] high → "error"
-  - [x] warning → "warning"
-  - [x] info → "info"
-- [x] Alert deduplication handled in AlertEvaluator via `AlertConditionTracker`
+**Spec references:**
+- Alerts: `docs/specs/alerts.md` — Evaluation Logic, Change Feed Trigger section
+- Data model: `docs/specs/data-model.md` — `alerts` container
 
-### 10.4 State Machine Integration
-- [x] Import `AlertEvaluator` in state_machine.py
-- [x] Create `AlertEvaluator` instance in `__init__`
-- [x] Add `_evaluate_alerts()` method that calls evaluator
-- [x] Call `_evaluate_alerts()` in evaluation cycle
-- [x] Store triggered alerts to database
-- [x] Route alerts to AlertManager based on severity
-
-### 10.5 Configuration Updates
-- [x] Update `config.yaml` with new alerts section
-- [x] Add example values for all alert thresholds
-- [x] Update `save_config()` to persist alerts section to YAML
-- [-] Maintain backward compatibility with old threshold format (not needed)
-- [x] Update `config.example.yaml` as template
-
-### 10.6 Web Dashboard Updates
-- [x] Update Settings page for new alert configuration
-  - [x] SpO2 Critical thresholds (therapy on/off)
-  - [x] SpO2 Warning thresholds
-  - [x] HR High/Low thresholds
-  - [x] Disconnect escalation times
-  - [x] Battery thresholds
-  - [x] No Therapy at Night (sleep hours, escalation times)
-  - [x] Resend interval per alert type
-- [x] Add therapy mode enable/disable toggles
-- [x] Update API endpoints for new config structure
-  - [x] GET /api/config returns alerts config
-  - [x] PUT /api/config accepts and saves alerts config
-- [ ] Update dashboard to show current therapy mode
-
-### 10.7 Testing
-- [ ] Unit tests for alert evaluator
-- [ ] Test therapy ON vs OFF threshold differences
-- [ ] Test disconnect escalation timing
-- [ ] Test battery alerts
-- [ ] Integration test with mock data
+**Verify:**
+1. POST readings with spo2=88 every 5 seconds for 35 seconds (exceeds 30s critical duration)
+2. Check `alerts` container — document exists with `alertType: "spo2_critical"`, `severity: "critical"`
+3. POST a reading with spo2=96
+4. Check alert document — `resolvedAt` is now set
+5. POST spo2=88 again for 35s — new alert created (not a duplicate of the resolved one)
 
 ---
 
-## Phase 11: Documentation & Training
+## Slice 11: All Alert Types
 
-### 11.1 Documentation
-- [x] Update DESIGN.md with alerting design
-- [ ] Create README.md with quick start
-- [ ] Document configuration options
-- [ ] Document API endpoints
-- [ ] Create troubleshooting guide
+**Goal:** Extend alert evaluation to cover all v2 alert types.
 
-### 11.2 Operational Runbooks
-- [ ] Daily monitoring checklist
-- [ ] Responding to SpO2 alarm
-- [ ] Responding to BLE disconnect
-- [ ] Responding to system down
-- [ ] Restarting the service
-- [ ] Updating the software
+**What to build:**
+- Add to `evaluateAlerts.ts`: `spo2_warning`, `hr_high`, `hr_low`, `battery_warning`, `battery_critical`
+- Each follows same pattern: check threshold + duration window → create/resolve alert
+- Battery alerts are instantaneous (no duration window)
+- Resend interval: if unresolved alert exists and `resendIntervalSec` has passed, mark for re-notification (flag in alert doc)
 
-### 11.3 Family Training
-- [ ] Dashboard walkthrough
-- [ ] Alert response procedure
-- [ ] Oximeter placement/charging
-- [ ] Who to call for technical issues
+**Spec references:**
+- Alerts: `docs/specs/alerts.md` — Alert Types table, full evaluation logic
+- Data model: `docs/specs/data-model.md` — `patients.alertConfig` fields
+
+**Verify:**
+1. POST readings with heartRate=130 for 65s → `hr_high` alert created
+2. POST reading with heartRate=70 → alert resolves
+3. POST reading with batteryLevel=8 → `battery_critical` alert created instantly (no duration)
+4. POST reading with batteryLevel=50 → battery alert resolves
+5. POST readings with spo2=91 for 65s → `spo2_warning` alert (not critical)
 
 ---
 
-## Phase 12: Multi-Adapter Bluetooth Failover ✅ (NEW)
+## Slice 12: PagerDuty Integration
 
-### 12.1 Internal Bluetooth Disabled
-- [x] Identified "Zombie Adapter" issue (internal BT interfering with USB adapters)
-- [x] Added `dtoverlay=disable-bt` to `/boot/firmware/config.txt`
-- [x] Verified internal adapter disabled after reboot
+**Goal:** Alerts trigger PagerDuty incidents and auto-resolve them.
 
-### 12.2 Dual Adapter Hardware Setup
-- [x] Selected Insignia USB Bluetooth adapters (BlueZ compatible)
-- [x] Configured Hallway adapter (on USB extension): MAC 10:A5:62:EC:E8:A5
-- [x] Configured Bedroom adapter (direct USB): MAC 10:A5:62:79:03:8A
-- [-] ASUS USB-BT500 tested but requires manual driver build (not used)
+**What to build:**
+- `api/src/shared/pagerduty.ts` — PagerDuty Events API v2 client (trigger, resolve)
+- Dedup key format: `o2-{alertType}-{patientId}-{YYYY-MM-DD}`
+- Severity mapping: critical→critical, high→error, warning→warning, info→info
+- Routing key: patient-specific `pagerdutyRoutingKey` or global env var `PAGERDUTY_ROUTING_KEY`
+- Wire into `evaluateAlerts.ts`: call PagerDuty on alert create and resolve
+- Handle resend: re-trigger PagerDuty when `resendIntervalSec` elapses for an unresolved alert
 
-### 12.3 AdapterManager Implementation
-- [x] Created `AdapterInfo` dataclass for adapter state
-- [x] Created `AdapterManager` class in `ble_reader.py`
-  - [x] `discover_adapters()` - runs hciconfig and matches to config
-  - [x] `switch_to_next_adapter()` - brings up next adapter, brings down current
-  - [x] `check_adapter_health()` - periodic availability check
-- [x] Integrated with `CheckmeO2Reader`
-  - [x] Switch after `switch_timeout_minutes` of no readings
-  - [x] Bounce every `bounce_interval_minutes` when in switching mode
-  - [x] Health check every 60 seconds
+**Spec references:**
+- Alerts: `docs/specs/alerts.md` — PagerDuty Integration section, dedup keys, severity mapping
 
-### 12.4 Configuration Updates
-- [x] Added `BluetoothConfig` and `BluetoothAdapterConfig` dataclasses
-- [x] Updated `config.yaml` with bluetooth section
-- [x] Added settings fields: adapter names, read interval, late reading, switch timeout, bounce interval
-- [x] API endpoints updated to save/load bluetooth config
-
-### 12.5 Dashboard Updates
-- [x] Added dual adapter status display in status grid
-- [x] Adapter indicators: active (green), connecting (amber pulse), standby (blue), offline (gray)
-- [x] Made vitals display larger (7rem) for visibility
-- [x] Put units (%, bpm) inline with numbers
-
-### 12.6 Settings Page Updates
-- [x] Added Bluetooth & Timeouts section
-- [x] Adapter name fields (editable)
-- [x] Read interval, late reading threshold, switch timeout, bounce interval
-- [x] All settings persist to config.yaml
-
-### 12.7 Adapter Disconnect Alert
-- [x] Added `adapter_disconnect` alert type to config.py
-- [x] Added alert row in Settings page table
-- [x] Warning severity, 60-minute resend interval
-- [x] Fires when configured adapter not detected in hciconfig output
+**Verify:**
+1. Set `PAGERDUTY_ROUTING_KEY` to a test/sandbox PD service routing key
+2. POST readings triggering spo2_critical (spo2=88 for 35s)
+3. Check PagerDuty dashboard — incident created with summary "SpO2 Critical: 88% for 30s"
+4. POST reading with spo2=96 (recover)
+5. PagerDuty incident auto-resolves
+6. Wait `resendIntervalSec` with ongoing spo2=88 readings — PagerDuty re-triggers
 
 ---
 
-## Immediate Next Steps
+## Slice 13: Disconnect Detection
 
-Priority order for next development session:
+**Goal:** Detect when a patient's device stops sending data and fire a disconnect alert.
 
-### Completed Phases
-- ~~**Phases 1-6**: Core infrastructure, device integration, database, alerting, state machine, web dashboard~~ [x] All Done
-- ~~**Phase 8**: Deployment - systemd service, installation scripts~~ [x] All Done
-- ~~**Phase 10**: Enhanced Alerting System with therapy-aware thresholds~~ [x] All Done
-- ~~**Phase 12**: Multi-Adapter Bluetooth Failover~~ [x] All Done
-- **Phase 13**: Android Relay App - Pi-side API (In Progress)
+**What to build:**
+- `api/src/functions/checkDisconnects.ts` — Timer trigger, runs every 60 seconds
+- For each patient: query latest reading timestamp
+- If `now - latestTimestamp > disconnectAlertSec` → create `disconnect` alert (if none unresolved)
+- Push `connectionStatus` event via SignalR (`{ patientId, deviceOnline: false, secondsSinceReading }`)
+- When a new reading arrives for a patient with an unresolved disconnect alert → resolve it + push `connectionStatus: online`
 
-## Phase 13: Android Relay App (NEW)
+**Spec references:**
+- Alerts: `docs/specs/alerts.md` — Disconnect detection (Timer Trigger section)
+- API: `docs/specs/api.md` — `connectionStatus` SignalR event
 
-Pi-side API for Android backup relay app. When dad moves out of BLE range of the Pi, the phone takes over reading the oximeter and relays data to the Pi over WiFi/VPN.
-
-### Pi-Side (This Instance) - COMPLETE
-- [x] Create relay API blueprint (`src/web/relay_api.py`)
-- [x] `GET /api/relay/status` - Phone checks if Pi needs help
-- [x] `POST /api/relay/reading` - Phone posts individual reading
-- [x] `POST /api/relay/batch` - Phone flushes queued readings
-- [x] `GET /api/relay/app-version` - Phone checks for updates
-- [x] Add `source` column to readings table ('ble' vs 'relay')
-- [x] Create `android/version.json` for app updates
-- [x] Implement Pi BLE backoff when receiving relay data
-- [x] Add phone/relay indicator to dashboard adapter card
-
-### Android-Side (Separate Instance)
-See `android/DESIGN.md` and `android/TODO.md` for Android app implementation.
-
-### API Notes for Android Developer
-The implemented Pi API has minor field name differences from the original design:
-- `seconds_since_reading` instead of `last_reading_age_seconds`
-- `ble_connected` instead of `pi_ble_connected`
-- `battery_level` instead of `battery`
-- No `device_id` or `queued` fields (can be added if needed)
-
-### Remaining Tasks
-- [x] Update dashboard to show current therapy mode indicator
-- [x] Unit tests for alert evaluator
-- [ ] Simulated failure testing (unplug adapters, network errors)
-- [ ] Family training on dashboard
-- [ ] Document operational runbooks
-
-### Completed Setup Tasks
-- [x] User account created for web dashboard
-- [x] PagerDuty configured (routing key in config.yaml)
-- [x] Healthchecks.io configured (ping URL in config.yaml)
-- [x] Kasa smart plug discovered (192.168.4.126)
-- [x] Power thresholds tuned (on: 25.0W, off: 20.0W for actual BiPAP)
-- [x] Internal Bluetooth disabled, dual USB adapters configured
-- [x] systemd service installed and verified working
+**Verify:**
+1. POST readings normally — `connectionStatus: online` on web dashboard
+2. Stop posting for 2+ minutes
+3. After timer fires: `disconnect` alert in Cosmos, PagerDuty triggers, web dashboard shows "Offline"
+4. Resume posting readings — disconnect alert resolves, dashboard shows "Online"
 
 ---
 
-## Phase 14: Vision-Based Sleep Monitoring (NEW)
+## Slice 14: Alert Banner on Dashboard
 
-Vision service to detect when dad falls asleep without AVAPS mask. Runs on Windows PC with RTX 3060 GPU, provides API for Pi to poll.
+**Goal:** Active alerts show as a prominent banner on the web dashboard, appearing and disappearing in real-time.
 
-**Alert Logic:** `IF face_detected AND is_dad AND eyes_closed > 5min AND no_mask → ALERT`
+**What to build:**
+- `web/src/components/AlertBanner.tsx` — displays active alerts at top of dashboard
+- Severity coloring: red (critical), orange (high), yellow (warning)
+- Shows alert message text and timestamp
+- Subscribe to SignalR `alertTriggered` and `alertResolved` events
+- On page load: fetch active alerts from `GET /api/patients/:id/status` (already includes `activeAlerts`)
 
-### 14.1 Core Infrastructure
-- [x] Create `vision/` directory structure and `__init__.py` files
-- [x] Implement `vision/config.py` with Pydantic Settings
-- [x] Implement `vision/models/camera.py` (CameraState enum, Camera, DetectionResult, VisionStatus)
+**Spec references:**
+- Web: `docs/specs/web-app.md` — AlertBanner component
+- API: `docs/specs/api.md` — `GET /api/patients/:id/status` response, SignalR alert events
 
-### 14.2 Detection Pipeline
-- [x] Implement `vision/detection/face_recognition.py` (InsightFace/ArcFace wrapper)
-- [x] Implement `vision/detection/eye_state.py` (MediaPipe Face Mesh + EAR calculation)
-- [x] Implement `vision/detection/mask_detection.py` (YOLO wrapper with heuristic fallback)
-- [x] Implement `vision/detection/pipeline.py` (DetectionPipeline orchestrator)
-
-### 14.3 Camera Management
-- [x] Implement `vision/capture/rtsp_stream.py` (OpenCV RTSP capture)
-- [x] Implement `vision/capture/camera_manager.py` (state machine + scheduler)
-  - [x] Camera states: IDLE (5 min) → ACTIVE (1 min) → ALERT (1 min)
-  - [x] Staggered scheduling across cameras
-  - [x] Dad detection triggers ACTIVE mode
-  - [x] Eyes closed + no mask > 5 min triggers ALERT
-
-### 14.4 FastAPI Service
-- [x] Implement `vision/api/server.py` (FastAPI app factory with lifespan)
-- [x] Implement API routes:
-  - [x] `GET /health` - Health check
-  - [x] `GET /status` - Overall status (Pi polls this)
-  - [x] `GET /cameras` - List all cameras
-  - [x] `POST /cameras` - Add camera
-  - [x] `GET /cameras/{id}/status` - Single camera status
-  - [x] `GET /cameras/{id}/snapshot` - Current frame as JPEG
-  - [x] `PUT /cameras/{id}` - Update camera
-  - [x] `DELETE /cameras/{id}` - Remove camera
-  - [x] `POST /cameras/{id}/enable` - Enable camera
-  - [x] `POST /cameras/{id}/disable` - Disable camera
-  - [x] `POST /enroll` - Upload dad's face photos
-  - [x] `POST /config` - Update thresholds
-
-### 14.5 Entry Point and Dependencies
-- [x] Implement `vision/main.py` (service entry point)
-- [x] Create `vision/requirements.txt` with pinned dependencies
-- [x] Create `vision/data/.gitkeep` and update `.gitignore`
-
-### 14.6 Pi Integration
-- [x] Implement `src/vision_client.py` (async client for Pi to poll vision service)
-- [x] Update `src/models.py` with `VISION_SLEEP_NO_MASK` alert type
-- [x] Add vision alert config to `config.yaml`
-
-### 14.7 Documentation
-- [x] Create `VISION.md` design document with:
-  - [x] Architecture overview
-  - [x] Camera state machine diagram
-  - [x] API endpoint documentation
-  - [x] Detection pipeline details
-  - [x] Configuration reference
-  - [x] Deployment instructions
-  - [x] Troubleshooting guide
-- [x] Update `README.md` with vision service section
-- [x] Update `.env.example` with vision config vars
-
-### 14.8 Testing
-- [H] Test vision service startup and health endpoint (requires Windows PC with GPU)
-- [H] Test RTSP capture from Reolink cameras (requires cameras on network)
-- [H] Test face enrollment and recognition (requires GPU dependencies)
-- [H] Test eye state detection (EAR calculation) (requires GPU dependencies)
-- [H] Test camera state transitions (requires full setup)
-- [H] Test Pi client polling `/status` (requires running vision service)
-- [H] End-to-end: alert triggers when eyes closed + no mask > 5 min (requires full setup)
-
-### Hardware
-- **Cameras:** TP-Link Tapo C210 (WiFi, native RTSP: `rtsp://user:pass@ip:554/stream1`)
-  - Note: Reolink E1 Pro does NOT have standalone RTSP - requires hub/NVR
-- **Compute:** Windows 11 PC, RTX 3060 12GB (GPU 0), Python 3.10
-
-### Configuration Defaults
-```yaml
-# Detection thresholds
-eyes_closed_alert_seconds: 300    # 5 min
-dad_gone_timeout_seconds: 600     # 10 min
-face_similarity_threshold: 0.6
-ear_closed_threshold: 0.2
-
-# Polling intervals
-idle_poll_seconds: 300            # 5 min
-active_poll_seconds: 60           # 1 min
-
-# Server
-api_host: 0.0.0.0
-api_port: 8100
-```
-
-### Key Dependencies
-- fastapi, uvicorn (web framework)
-- opencv-python (RTSP capture)
-- insightface, onnxruntime-gpu (face recognition)
-- mediapipe (eye landmarks)
-- ultralytics (YOLO mask detection)
-- torch+cu121 (GPU compute)
+**Verify:**
+1. Open dashboard — no banner (no active alerts)
+2. Trigger spo2_critical alert (POST low SpO2 readings for 35s)
+3. Red banner appears within seconds: "SpO2 Critical: 88% for 30 seconds"
+4. POST a recovery reading (spo2=96)
+5. Banner disappears within seconds
+6. Refresh page with an active alert — banner shows on load (not just from SignalR)
 
 ---
 
-## Notes
+## Slice 15: Alerts History Page
 
-- Device MAC: `C8:F1:6B:56:7B:F1`
-- Kasa Smart Plug IP: `192.168.4.126`
-- BLE library: BLE-GATT (not bleak/bluepy)
-- Device must be "trusted" not "paired" in bluetoothctl
-- Virtual env needs `--system-site-packages` for GLib
-- Working test script: `test_working.py`
-- **Bluetooth adapters:**
-  - Internal Pi Bluetooth: DISABLED (`dtoverlay=disable-bt`)
-  - Hallway adapter: Insignia USB, MAC 10:A5:62:EC:E8:A5
-  - Bedroom adapter: Insignia USB, MAC 10:A5:62:79:03:8A
-- **vext workaround**: vext.gi blocks system packages. Had to install `cffi==1.17.1` and `cryptography==42.0.8` with `--only-binary :all:` to get prebuilt ARM wheels
-- **pip upgrade**: Upgraded pip to 25.3 (old 20.3.4 had TOML parsing bugs)
-- **BLE command 0x17**: Returns current real-time reading only (not stored data)
-- **Trend analysis important**: Gradual SpO2 decline (94→93→92→91→90) more clinically significant than sudden drop (97→82 = likely sensor artifact)
-- **Flask caching**: Always restart app after modifying web files
-- **GitHub repo**: https://github.com/dmattox-sparkcodelabs/02Monitor
+**Goal:** Dedicated page to browse alert history with filtering.
 
----
+**What to build:**
+- `api/src/functions/queryAlerts.ts` — `GET /api/patients/:id/alerts?days=N&status=active|resolved`
+- `web/src/app/alerts/page.tsx` — alert history page
+- `web/src/components/AlertTable.tsx` — table with columns: Time, Type, Severity (color badge), Message, Status
+- Tabs: Active | Resolved | All
+- Severity and type filter dropdowns
+- Add "Alerts" link to navigation
 
-### Session 2026-01-11 Evening Fixes
-- Fixed BLE reader to run in background thread for real hardware (GLib main loop blocking issue)
-- Fixed signal handler error in threads (can't set signals in non-main thread)
-- Added refresh progress bar on dashboard
-- Fixed history page stats not showing (field name mismatch: avg_spo2 vs spo2_avg)
-- Fixed dashboard chart timezone mismatch (JS sends UTC, DB stores local time)
-- Changed from 24-hour to 12-hour time format per user request
-- Removed role-based access for Settings page (simplified - no user roles needed)
-- Fixed logout button visibility (white text on navbar)
-- Added settings persistence to config.yaml
-- Added SpO2 threshold zones on charts (red <90%, yellow 90-92%)
-- Added HR threshold zones on charts (red <50/>120, yellow 50-60/100-120)
-- **Added automatic BLE reconnection** - reconnects within 5 seconds if connection drops
+**Spec references:**
+- API: `docs/specs/api.md` — `GET /api/patients/:id/alerts`
+- Web: `docs/specs/web-app.md` — `/alerts` page, AlertTable
+
+**Verify:**
+1. Trigger and resolve a few different alert types (spo2_critical, hr_high, battery_warning)
+2. Navigate to `/alerts` — all alerts appear in table
+3. Click "Active" tab — only unresolved alerts shown
+4. Click "Resolved" tab — only resolved alerts shown
+5. Filter by severity "critical" — only critical alerts shown
+6. Confirm severity badges are color-coded
 
 ---
 
-### Session 2026-01-12 - Kasa Integration & Alerting Design
-- Discovered Kasa smart plug at 192.168.50.10 (config had wrong IP)
-- Tuned AVAPS power thresholds: on_watts=5.0, off_watts=4.0 (tested with CPAP)
-- Changed BLE read interval from 10s to 5s for faster response
-- Changed late reading threshold from 15s to 30s to reduce false warnings
-- Set up GitHub repository and pushed code
-- Configured PagerDuty (routing key) and Healthchecks.io (ping URL)
-- Fixed Settings page to show PagerDuty/Healthchecks values
-- Fixed test alert to use `trigger_alarm()` instead of `trigger_local_only()`
-- Removed unnecessary "Configured/Not Configured" indicators from Settings
-- Added Test Alert button to Settings page
-- **Designed therapy-aware multi-severity alerting system:**
-  - Different thresholds for therapy ON (night) vs OFF (day)
-  - Alert types: spo2_critical, spo2_warning, hr_high, hr_low, disconnect, battery
-  - Severity levels: critical, high, warning, info
-  - Disconnect alerts escalate over time (info → warning → high)
-  - All configurable via config.yaml without code changes
-- Updated DESIGN.md with new alerting design
-- Added Phase 10 to TODO.md with implementation plan
+## Slice 16: Settings Page — Alert Thresholds
 
-**Completed**: Installed libsdl2-mixer-2.0-0 and espeak for audio alerts
+**Goal:** Patient owners can view and edit alert thresholds from the web UI.
 
----
+**What to build:**
+- `api/src/functions/managePatients.ts` — add `PUT /api/patients/:id` (owner role check, updates `alertConfig`)
+- `web/src/app/settings/page.tsx` — settings page
+- `web/src/components/ThresholdEditor.tsx` — editable table of all alert thresholds (threshold, duration, severity per type)
+- Patient info section: name and device MAC (editable)
+- PagerDuty routing key field (masked input) and resend interval
+- Save button → `PUT /api/patients/:id`
+- Owner-only gate: non-owners see "Contact the owner to change settings"
+- Add "Settings" link to navigation
 
-### Session 2026-01-12 Afternoon - Enhanced Alerting Implementation
-- Implemented Phase 10 therapy-aware alerting system:
-  - **models.py**: Added new AlertType enums (SPO2_CRITICAL, SPO2_WARNING, HR_HIGH, HR_LOW, DISCONNECT, NO_THERAPY_AT_NIGHT, BATTERY_WARNING, BATTERY_CRITICAL), added HIGH severity, removed legacy SPO2_LOW and BLE_DISCONNECT
-  - **config.py**: Added TherapyModeConfig, SleepHoursConfig (with is_sleep_hours() for overnight ranges), and all alert config dataclasses. Updated save_config() to persist alerts section.
-  - **alert_evaluator.py**: New module with AlertConditionTracker for duration tracking and AlertEvaluator for threshold evaluation with deduplication
-  - **state_machine.py**: Integrated AlertEvaluator, added _evaluate_alerts() method
-  - **alerting.py**: Updated severity mapping to use pagerduty_severity property
-- Updated Settings page (settings.html, settings.js) with all new alert configuration fields:
-  - SpO2 Critical/Warning with therapy ON/OFF thresholds
-  - HR High/Low thresholds
-  - Disconnect alert escalation times
-  - No Therapy at Night with sleep hours and escalation
-  - Battery warning/critical thresholds
-- Updated API endpoints (api.py):
-  - GET /api/config now returns full alerts config structure
-  - PUT /api/config now accepts and saves alerts config
-- Tested config save/load cycle - all fields persist correctly
+**Spec references:**
+- API: `docs/specs/api.md` — `PUT /api/patients/:id`
+- Data model: `docs/specs/data-model.md` — `patients.alertConfig` fields
+- Web: `docs/specs/web-app.md` — `/settings` page, ThresholdEditor
+
+**Verify:**
+1. Log in as patient owner, navigate to `/settings`
+2. Change SpO2 critical threshold from 90 to 88, click Save
+3. `GET /api/patients/:id` returns `alertConfig.spo2CriticalThreshold = 88`
+4. POST readings with spo2=89 for 35s — NO alert (threshold is now 88)
+5. POST readings with spo2=87 for 35s — alert fires
+6. Log in as a viewer (if one exists) — settings page shows read-only message
 
 ---
 
-### Session 2026-01-12 Evening - Settings Table & Audio Alerts
-- Refactored Settings page to use table format for all alerts
-- Created unified AlertItemConfig pattern: enabled, threshold, duration, severity, bypass_on_therapy
-- Split SpO2 Critical into two alerts:
-  - **SpO2 Critical (Off Therapy)**: 90% threshold, 30s duration
-  - **SpO2 Critical (On Therapy)**: 85% threshold, 120s duration (more lenient during AVAPS)
-- Split No Therapy at Night into two escalation levels:
-  - **No Therapy at Night (Info)**: 30 min, info severity
-  - **No Therapy at Night (Urgent)**: 60 min, high severity
-- Fixed table CSS for better layout (no more wrapping units)
-- Created start.sh and stop.sh scripts for easier app management
-- **Implemented audio alerts with programmatic tone generation:**
-  - No external sound files needed - tones generated using pygame + pure Python
-  - Different tone patterns per severity:
-    - Critical: Fast triple beeps at 880 Hz
-    - High: Double beeps at 660 Hz
-    - Warning: Slower single beeps at 440 Hz
-    - Info: Low single tone at 330 Hz
-  - Installed espeak for TTS
-  - Alert messages spoken: "Warning! Oxygen level critical at 85 percent."
-  - Critical/High alerts repeat (tones + TTS) every 30 seconds until resolved
-- Installed libsdl2-mixer-2.0-0 for pygame audio support
-- Updated config.py, alert_evaluator.py, api.py, settings.js for new alert structure
+## Slice 17: Access Management
+
+**Goal:** Patient owners can invite family members and assign roles.
+
+**What to build:**
+- `api/src/functions/manageAccess.ts`:
+  - `POST /api/patients/:id/access` — invite by email + role (owner only)
+  - `DELETE /api/patients/:id/access/:userId` — revoke access (owner only, can't revoke self)
+- `web/src/components/AccessManager.tsx` — table of users with access (email, role), invite form, remove button
+- Add to settings page below threshold editor
+- Pending invites: if email not yet in `users` container, store in `patientAccess` anyway — access granted when they first log in
+
+**Spec references:**
+- API: `docs/specs/api.md` — `POST /api/patients/:id/access`, `DELETE /api/patients/:id/access/:userId`
+- Data model: `docs/specs/data-model.md` — `patientAccess` container
+- Web: `docs/specs/web-app.md` — AccessManager component
+
+**Verify:**
+1. Navigate to `/settings` → Access Management section
+2. Invite `sister@gmail.com` as `viewer`
+3. Check `patientAccess` container — document created
+4. Log in as sister (create B2C account with that email) — dashboard shows dad's data
+5. Sister navigates to `/settings` — sees read-only message
+6. As owner, revoke sister's access
+7. Sister refreshes — patient no longer visible
 
 ---
 
-### Session 2026-01-12 Night - Bug Fixes & Maintenance
-- **Fixed dashboard chart timezone issue:**
-  - API was using `time.daylight` to check DST, but this only indicates if DST is defined, not if it's active
-  - In January (CST, UTC-6), code was incorrectly using CDT offset (UTC-5), causing 1-hour shift
-  - Fixed to use `time.localtime().tm_gmtoff` for correct current offset
-- **Increased chart data limits:**
-  - Dashboard: 2000/8000/30000 for 1hr/6hr/24hr views
-  - History page: 200000 to support 30 days of data retention
-  - API max limit increased from 5000 to 200000
-- **Added daily database cleanup:**
-  - Runs automatically every 24 hours via state machine
-  - Deletes readings >30 days, alerts >365 days, events >90 days
-- **Fixed history page layout:**
-  - Added CSS for date controls and stats grid
-  - Fixed readings table to show newest first
-- **Fixed page centering:**
-  - Settings page now centered with max-width 900px
-  - Login page uses flex column layout for proper centering
-  - Flash messages display above login box correctly
+## Slice 18: History Page — Readings Chart + Table
+
+**Goal:** Browse historical SpO2/HR data with a date range picker.
+
+**What to build:**
+- `web/src/app/history/page.tsx` — history page
+- `web/src/components/HistoryChart.tsx` — SpO2 + HR trend chart (Recharts)
+- Date range presets: 7d | 30d | 90d | Custom (calendar picker)
+- Readings table: timestamp, SpO2, HR, battery — paginated, newest first
+- Stats summary bar: avg SpO2, min SpO2, avg HR, reading count for selected range
+- Uses `GET /api/patients/:id/readings?hours=N` for data
+- Add "History" link to navigation
+
+**Spec references:**
+- API: `docs/specs/api.md` — `GET /api/patients/:id/readings`
+- Web: `docs/specs/web-app.md` — `/history` page, HistoryChart
+
+**Verify:**
+1. Seed several days of test readings
+2. Navigate to `/history` — default 7d view shows chart and table
+3. Switch to 30d — chart rescales, more data
+4. Stats bar shows correct avg/min SpO2 values
+5. Table is paginated, newest first
+6. Custom date range: select specific 2-day window — only that data shown
 
 ---
 
-### Session 2026-01-13/14 - Bluetooth Adapter Issues & Multi-Adapter Failover
+## Slice 19: Nightly Aggregation
 
-**Problem Identified:**
-- BLE connections were failing after Pi 5 to Pi 4 migration
-- Root cause: "Zombie Adapter" problem where internal Bluetooth (hci0) was interfering with USB adapters
-- BlueZ prioritizes hci0 even when it's not the desired adapter
+**Goal:** Raw readings older than 90 days are replaced by daily summaries. A timer function computes nightly stats.
 
-**Solution Implemented:**
-1. **Disabled internal Bluetooth:**
-   - Added `dtoverlay=disable-bt` to `/boot/firmware/config.txt`
-   - Verified disabled after reboot
+**What to build:**
+- `api/src/functions/nightlyAggregation.ts` — Timer trigger (08:00 UTC daily)
+- For each patient: query readings for completed night using `nightDate = (timestamp + 12h).date()`
+- Compute: readingCount, durationSeconds, spo2 avg/min/max, hr avg/min/max, timeBelow90Seconds, timeBelow88Seconds, pctBelow90, pctBelow88
+- Upsert to `dailySummaries` container (idempotent by `id = patientId:nightDate`)
+- Create `dailySummaries` container in Cosmos DB (partition key `/patientId`, no TTL)
+- `api/src/functions/querySummaries.ts` — `GET /api/patients/:id/summaries?days=N`
 
-2. **Selected working USB adapters:**
-   - ASUS USB-BT500 tested but requires manual driver build (kernel headers, make)
-   - Insignia USB Bluetooth adapters work out of the box with BlueZ
-   - Chose two Insignia adapters: Hallway (USB extension) and Bedroom (direct)
+**Spec references:**
+- Data model: `docs/specs/data-model.md` — `dailySummaries` container, night date logic
+- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`, Timer functions
 
-3. **Implemented multi-adapter failover:**
-   - Created `AdapterManager` class to manage multiple adapters
-   - Automatic switching after 5 minutes of no readings
-   - "Bounce mode" cycles through adapters every 1 minute when in switching mode
-   - Health checks every 60 seconds via `hciconfig -a`
+**Verify:**
+1. Seed a full night of readings (22:00-06:00, every 15s, SpO2 varying 90-98)
+2. Manually trigger aggregation function
+3. Check `dailySummaries` container — document with correct nightDate, stats match seeded data
+4. `GET /api/patients/:id/summaries?days=30` — returns the summary
+5. Re-trigger aggregation — same document updated (upsert, not duplicate)
 
-4. **Dashboard updates:**
-   - Added dual adapter status display with colored indicators
-   - Active=green, Connecting=amber (pulsing), Standby=blue, Offline=gray
-   - Made vitals display larger (7rem) for dad's visibility
-   - Put units inline with numbers (96% instead of 96 / %)
+---
 
-5. **Settings page updates:**
-   - Added Bluetooth & Timeouts section
-   - Editable adapter names
-   - Configurable timeouts: read interval, late reading, switch timeout, bounce interval
+## Slice 20: Nightly Summary Table on History Page
 
-6. **New alert type:**
-   - Added `adapter_disconnect` alert (warning severity)
-   - Fires when a configured Bluetooth adapter is not detected
-   - 60-minute resend interval
+**Goal:** History page shows nightly summaries and seamlessly blends raw + summary data.
 
-7. **Resend intervals:**
-   - Added `resend_interval_seconds` to all alert types
-   - Prevents alert fatigue from repeated notifications
-   - Configurable per alert type in Settings
+**What to build:**
+- `web/src/components/NightlySummaryTable.tsx` — one row per night: date, avg SpO2, min SpO2, time below 90%, avg HR, count
+- Add to history page below the charts
+- For date ranges beyond 90 days: fetch from summaries endpoint instead of readings
+- Long-term trend chart: plot avg SpO2 per night from summaries
 
-**Files Modified:**
-- `src/ble_reader.py` - AdapterManager class and switching logic
-- `src/config.py` - BluetoothConfig, BluetoothAdapterConfig, adapter_disconnect alert
-- `config.yaml` - bluetooth section with adapter definitions
-- `src/web/api.py` - /api/adapters endpoint, config save/load
-- `src/web/templates/dashboard.html` - adapter status display
-- `src/web/templates/settings.html` - Bluetooth & Timeouts section
-- `src/web/static/css/style.css` - adapter indicator styles
-- `src/web/static/js/dashboard.js` - adapter status fetching
-- `src/web/static/js/settings.js` - bluetooth settings handling
+**Spec references:**
+- Web: `docs/specs/web-app.md` — NightlySummaryTable, history page long-term trends
+- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`
 
-**Cleanup:**
-- Removed stray files: `cat`, `echo`, `on`, `New power settings:`, `test_asus.py`
-- Removed ASUS driver downloads from ~/Downloads
+**Verify:**
+1. Have both raw readings (recent) and daily summaries (older) in Cosmos
+2. Navigate to `/history`, select 90d range — see chart with raw data
+3. Select "all time" or a range spanning summary-only dates — chart uses summary data
+4. Nightly summary table shows each night's stats
+5. Click a recent night row — drills down to raw readings for that night
 
-*Last Updated: 2026-01-14*
+---
+
+## Slice 21: Android App — Project Setup + Login
+
+**Goal:** Android app shell that authenticates with Azure AD B2C and fetches the patient list.
+
+**What to build:**
+- Initialize `android/O2Monitor/` — Kotlin, min SDK 26, Jetpack Compose, Hilt
+- Gradle dependencies: MSAL, OkHttp, Room, Hilt, Compose
+- `network/AuthManager.kt` — MSAL B2C login (interactive + silent refresh)
+- `network/ApiClient.kt` — `getPatients()`, `getUserProfile()` with Bearer token
+- Login screen (Compose): "Sign In" button → MSAL redirect
+- Patient select screen: list from `GET /api/patients`, tap to select, save to SharedPreferences
+- Minimal dashboard screen: shows selected patient name + "Not monitoring yet"
+
+**Spec references:**
+- Android: `docs/specs/android-app.md` — Tech Stack, AuthManager, Screens (Login, Patient Select)
+
+**Verify:**
+1. Build and install APK
+2. Open app — login screen appears
+3. Tap "Sign In" — B2C login flow in browser
+4. After login — patient select screen shows your patients
+5. Select a patient — dashboard screen shows patient name
+6. Kill and reopen app — still logged in (silent token refresh), same patient selected
+
+---
+
+## Slice 22: Android BLE Protocol Layer
+
+**Goal:** Port the BLE protocol to Kotlin and prove it parses real oximeter packets correctly.
+
+**What to build:**
+- `ble/BleProtocol.kt` — pure Kotlin (no Android deps):
+  - `calcCrc(data: ByteArray): Byte`
+  - `buildCommand(cmd: Byte): ByteArray`
+  - `PacketParser` class with `feed(data: ByteArray): List<Packet>`
+  - `parseReading(payload: ByteArray): OxiReading?`
+- Unit tests: test CRC against known values from `archive/windows/protocol.py`, test packet parsing with captured byte sequences from v1
+
+**Spec references:**
+- Android: `docs/specs/android-app.md` — BLE Protocol section, BleProtocol.kt
+- Reference: `archive/windows/protocol.py` (Python implementation to port from)
+- Reference: `archive/android/O2Relay/app/src/test/java/com/o2monitor/relay/OximeterProtocolTest.kt` (existing Kotlin tests)
+
+**Verify:**
+1. Unit tests pass: CRC matches Python implementation for known inputs
+2. `buildCommand(0x17)` produces `AA 17 E8 00 00 00 00 <crc>` (same as Python)
+3. `parseReading()` correctly extracts SpO2, HR, battery from a captured 13-byte payload
+4. `PacketParser` handles fragmented input (feed partial data, then rest — yields one complete packet)
+
+---
+
+## Slice 23: Android BLE Service + Live Readings
+
+**Goal:** Android app connects to the oximeter, reads vitals every 5 seconds, and displays them.
+
+**What to build:**
+- `ble/BleState.kt` — state enum: IDLE, SCANNING, CONNECTING, READING, RECONNECTING
+- `ble/BleService.kt` — foreground service:
+  - Scan for device by MAC or name prefix "O2M"
+  - Connect, discover services, enable notifications on RX UUID
+  - Poll every 5s via command 0x17
+  - Foreground notification: "Monitoring SpO2 — 97% | HR 72"
+  - Stale watchdog: force reconnect if no reading for 60s
+  - Exponential backoff: 5s → 10s → 20s → 30s
+- Update dashboard screen: show live SpO2, HR, battery, BLE state
+- Start/Stop toggle button on dashboard
+- Runtime permission flow: request BLE + location on first start
+
+**Spec references:**
+- Android: `docs/specs/android-app.md` — BleService, state machine, foreground notification, permissions
+
+**Verify:**
+1. Put Checkme O2 Max on finger
+2. Open app, tap Start
+3. App scans → connects → shows "Connected"
+4. Dashboard shows SpO2, HR, battery updating every 5s
+5. Notification bar shows "Monitoring SpO2 — 97% | HR 72"
+6. Remove oximeter — app shows "Reconnecting..." after 60s
+7. Put oximeter back — reconnects and resumes
+
+---
+
+## Slice 24: Android Cloud Upload + Offline Queue
+
+**Goal:** Readings from the Android BLE service are uploaded to Azure and appear on the web dashboard.
+
+**What to build:**
+- `data/ReadingEntity.kt`, `data/ReadingDao.kt`, `data/AppDatabase.kt` — Room offline queue
+- `data/ReadingRepository.kt` — enqueue every reading, flushToCloud (single POST), pruneExpired (24h)
+- Wire BleService: on each reading → `repository.enqueue()` → `repository.flushToCloud()`
+- On network failure: reading stays in queue, retried next cycle
+- Update dashboard: show upload status (online/offline, queue count)
+
+**Spec references:**
+- Android: `docs/specs/android-app.md` — ReadingRepository, offline queue flow
+- API: `docs/specs/api.md` — `POST /api/readings`
+
+**Verify:**
+1. Android app reading oximeter + uploading
+2. Open web dashboard — vitals appear within 1-2 seconds of each Android reading
+3. Turn off phone WiFi — Android shows "Offline (N readings queued)", queue count grows
+4. Turn WiFi back on — queue flushes, web dashboard catches up
+5. Check Cosmos DB — no duplicate readings (same timestamps not double-inserted)
+
+---
+
+## Slice 25: Android Batch Upload
+
+**Goal:** Offline queue flushes efficiently using the batch endpoint.
+
+**What to build:**
+- `api/src/functions/ingestBatch.ts` — `POST /api/readings/batch`, deduplicates by `(patientId, timestamp)`, bulk writes, returns accepted/rejected counts
+- Only push most recent reading to SignalR (avoid flooding)
+- Update Android `ReadingRepository.flushToCloud()` to use batch endpoint when queue > 1
+
+**Spec references:**
+- API: `docs/specs/api.md` — `POST /api/readings/batch`
+- Android: `docs/specs/android-app.md` — ReadingRepository
+
+**Verify:**
+1. Disconnect phone WiFi for 5 minutes while BLE reads
+2. Queue shows ~60 readings
+3. Reconnect WiFi — app flushes as one batch
+4. API returns `{ "accepted": 60, "rejected": 0 }`
+5. Web dashboard shows latest reading (not replaying 60 updates)
+6. Repeat disconnect/reconnect — no duplicates in Cosmos
+
+---
+
+## Slice 26: Android Boot Receiver + Battery Optimization
+
+**Goal:** App survives reboots and Android battery management.
+
+**What to build:**
+- `util/BootReceiver.kt` — starts BleService on `BOOT_COMPLETED`
+- Register in AndroidManifest
+- Request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` on first launch
+- Settings screen: device info, account info, logout button, app version
+
+**Spec references:**
+- Android: `docs/specs/android-app.md` — Boot receiver, battery optimization, Settings screen
+
+**Verify:**
+1. App is monitoring, reboot the phone
+2. After boot completes — notification reappears, BLE service resumes automatically
+3. Check battery settings — app is listed as "Not optimized"
+4. Leave running overnight — confirm readings still flowing in the morning
+
+---
+
+## Slice 27: Responsive Web Design + Mobile Polish
+
+**Goal:** Web dashboard works well on phones and tablets with large, readable vitals.
+
+**What to build:**
+- Responsive layout breakpoints:
+  - Desktop (≥1024px): side-by-side vitals + chart
+  - Tablet (768-1023px): stacked vitals, full-width chart
+  - Mobile (<768px): single column, bottom nav bar
+- Large font vitals: 4-5rem desktop, 3rem mobile
+- Color-coded card backgrounds (not just text) for SpO2 ranges
+- Dark mode: Tailwind dark variant, respect system preference
+- Touch-friendly tap targets on mobile
+
+**Spec references:**
+- Web: `docs/specs/web-app.md` — Responsive Design section
+
+**Verify:**
+1. Desktop browser — full layout with side-by-side elements
+2. Resize to 768px — stacks, chart full-width
+3. Resize to 375px — single column, bottom nav, large vitals
+4. Open on actual phone — numbers readable from arm's length
+5. Toggle system dark mode — dashboard theme switches
+6. Navigate all pages on mobile — no layout breakage
+
+---
+
+## Slice 28: CI/CD — API Deployment
+
+**Goal:** Pushing to main auto-deploys Azure Functions.
+
+**What to build:**
+- `.github/workflows/deploy-api.yml` — trigger on push to `main` with changes in `api/`
+- Steps: checkout, install deps, build TypeScript, run tests, deploy to Azure Functions
+- Azure publish profile stored as GitHub secret
+- Document Azure resource provisioning steps in `docs/specs/architecture.md`
+
+**Spec references:**
+- Architecture: `docs/specs/architecture.md` — Deployment section
+
+**Verify:**
+1. Push a change to `api/src/` on main
+2. GitHub Actions workflow triggers and succeeds
+3. `curl https://<func-app>.azurewebsites.net/api/users/me` responds (with auth)
+
+---
+
+## Slice 29: CI/CD — Web + Android Deployment
+
+**Goal:** Web app and Android APK deploy automatically.
+
+**What to build:**
+- `.github/workflows/deploy-web.yml` — build Next.js static export, deploy to Azure Static Web Apps
+- `.github/workflows/build-android.yml` — build debug APK, upload to GitHub Releases
+- Secrets: Static Web Apps deployment token, signing key for Android (if release build)
+
+**Spec references:**
+- Architecture: `docs/specs/architecture.md` — Deployment section
+
+**Verify:**
+1. Push a change to `web/` — Static Web App deploys, accessible at public URL
+2. Push a change to `android/` — APK artifact in GitHub Releases
+3. Download APK, install, connects to production Azure backend
+4. Full loop: Android reading → Azure → web dashboard at production URL

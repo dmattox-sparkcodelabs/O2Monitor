@@ -12,8 +12,6 @@ venv/
 *.env
 
 # Data and logs
-data/
-logs/
 *.db
 *.log
 
@@ -31,6 +29,7 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+.secrets.md
 
 # Wheel files
 *.whl
@@ -38,19 +37,20 @@ credentials.json
 # Claude Code
 .claude/
 
-# Secrets (credentials, API keys) - NEVER commit
-.secrets.md
+# Android / Gradle
+android/**/build/
+android/**/.gradle/
+android/**/local.properties
+*.apk
 
-# Local config (may contain sensitive settings)
-config.yaml
+# Node
+node_modules/
+dist/
 
-# Acknowledgment file (each user must create their own)
-ACKNOWLEDGED_NOT_FOR_MEDICAL_USE.txt
-backups/
+# Azure Functions
+api/local.settings.json
 
-# Vision service data (face embeddings, cameras config)
-vision/data/*
-!vision/data/.gitkeep
-
-# Windows baseline capture (DB covered by *.db above; this is for the per-machine config)
-windows/o2_baseline.config.json
+# Archive (keep tracked but ignore runtime artifacts inside)
+archive/**/__pycache__/
+archive/**/*.db
+archive/**/*.log
