@@ -252,7 +252,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 11: All Alert Types
+## ~~Slice 11: All Alert Types~~ ✅
 
 **Goal:** Extend alert evaluation to cover all v2 alert types.
 
