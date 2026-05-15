@@ -106,56 +106,40 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 5: Azure AD B2C Setup + API Auth Middleware
+## ~~Slice 5: API Key Auth~~ ✅
 
-**Goal:** API endpoints reject unauthenticated requests. No web UI changes yet — test with curl + manually obtained tokens.
+**Goal:** API endpoints reject unauthenticated requests. Simple API key auth — swap for Azure AD B2C later.
 
 **What to build:**
-- Set up Azure AD B2C tenant with sign-up/sign-in user flow (email/password)
-- Register "O2Monitor API" and "O2Monitor Web" app registrations
-- `api/src/shared/auth.ts` — JWT validation middleware (validates B2C tokens, extracts user OID)
-- Create `users` container in Cosmos DB
-- Auto-create user document on first authenticated API call
-- Apply auth middleware to `ingestReading` and `queryStatus`
-- `api/src/functions/getUserProfile.ts` — `GET /api/users/me` (returns user profile)
+- `api/src/shared/auth.ts` — validates `x-api-key` header against `API_KEYS` env var (comma-separated list)
+- Apply auth middleware to `ingestReading`, `queryStatus`, and `negotiate`
+- `API_KEYS` in `local.settings.json` (e.g., `"dad-phone-key,david-phone-key,web-dashboard-key"`)
+- Web app sends API key via header on all fetch calls and SignalR negotiate
+- Update `web/src/lib/api.ts` to include the key from an env var (`NEXT_PUBLIC_API_KEY`)
 
 **Spec references:**
-- Architecture: `docs/specs/architecture.md` — Authentication & Authorization
-- Data model: `docs/specs/data-model.md` — `users` container
-- API: `docs/specs/api.md` — Authentication section, `GET /api/users/me`
+- Architecture: `docs/specs/architecture.md` — Authentication & Authorization (simplified for now)
 
 **Verify:**
 1. `curl http://localhost:7071/api/patients/test-patient-1/status` — returns 401
-2. Obtain a B2C token (via browser login or ROPC flow for testing)
-3. `curl -H "Authorization: Bearer <token>" http://localhost:7071/api/patients/test-patient-1/status` — returns 200
-4. `curl -H "Authorization: Bearer <token>" http://localhost:7071/api/users/me` — returns user profile with email
-5. Check Cosmos DB `users` container — user document was auto-created
+2. `curl -H "x-api-key: test-key" http://localhost:7071/api/patients/test-patient-1/status` — returns 200
+3. Web dashboard still works (sends API key automatically)
+4. Invalid API key — returns 401
 
 ---
 
-## Slice 6: Web App Login Flow
+## Slice 6: Azure AD B2C Auth (Deferred)
 
-**Goal:** Web app requires login. Unauthenticated users see a login page, authenticated users see the dashboard.
+**Goal:** Replace API key auth with Azure AD B2C for proper multi-user identity.
 
-**What to build:**
-- Add `@azure/msal-react` to Next.js
-- `web/src/lib/auth.ts` — MSAL config with B2C tenant/client IDs
-- `web/src/hooks/useAuth.ts` — login, logout, token acquisition
-- `web/src/app/login/page.tsx` — "Sign In" button + disclaimer text
-- Auth guard in `web/src/app/layout.tsx` — redirect unauthenticated users to `/login`
-- Pass Bearer token on all API calls in `web/src/lib/api.ts`
-- Add user name + logout button to page header
+**Status:** Deferred — requires creating a B2C tenant in Azure portal (~30 min manual setup). Current API key auth is sufficient for development and initial use.
 
-**Spec references:**
-- Web: `docs/specs/web-app.md` — Authentication section, `/login` page
-
-**Verify:**
-1. Open `http://localhost:3000` — redirected to `/login`
-2. Click "Sign In" — B2C login page appears
-3. Create account or sign in
-4. Redirected to dashboard — vitals display (if readings exist)
-5. Open incognito window → `http://localhost:3000` — redirected to `/login` (no session leak)
-6. Click logout button — returned to `/login`
+**What to build (when ready):**
+- Set up Azure AD B2C tenant with sign-up/sign-in user flow
+- Register API and Web app registrations
+- Replace `x-api-key` validation with JWT validation
+- Add MSAL to web app for login/logout flow
+- Auto-create user documents in `users` container on first login
 
 ---
 

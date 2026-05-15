@@ -1,5 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import { getContainer } from "../shared/cosmos";
+import { authenticateRequest } from "../shared/auth";
 import { buildStatusResponse } from "../shared/statusBuilder";
 import { Reading, Patient } from "../shared/types";
 
@@ -7,6 +8,9 @@ async function queryStatus(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
+  const authError = authenticateRequest(request);
+  if (authError) return authError;
+
   const patientId = request.params.id;
   if (!patientId) {
     return {

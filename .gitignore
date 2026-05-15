@@ -50,6 +50,9 @@ dist/
 # Azure Functions
 api/local.settings.json
 
+# Next.js local env
+web/.env.local
+
 # Archive (keep tracked but ignore runtime artifacts inside)
 archive/**/__pycache__/
 archive/**/*.db

@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext, output } from "@azure/functions";
 import { v4 as uuidv4 } from "uuid";
 import { getContainer } from "../shared/cosmos";
+import { authenticateRequest } from "../shared/auth";
 import { validateIngestRequest } from "../shared/validation";
 import { buildNewReadingMessage } from "../shared/signalr";
 import { Reading, DEFAULT_TTL } from "../shared/types";
@@ -15,6 +16,9 @@ async function ingestReading(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
+  const authError = authenticateRequest(request);
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { HubConnectionBuilder, HubConnection, LogLevel } from "@microsoft/signalr";
 import { LatestReading } from "@/lib/types";
+import { negotiateSignalR } from "@/lib/api";
 
 interface UseSignalROptions {
   patientId: string;
@@ -20,12 +21,7 @@ export function useSignalR({ patientId, onNewReading }: UseSignalROptions) {
     if (connectionRef.current) return;
 
     try {
-      const res = await fetch("/api/negotiate", { method: "POST" });
-      if (!res.ok) {
-        console.error("SignalR negotiate failed:", res.status);
-        return;
-      }
-      const { url, accessToken } = await res.json();
+      const { url, accessToken } = await negotiateSignalR();
 
       const connection = new HubConnectionBuilder()
         .withUrl(url, { accessTokenFactory: () => accessToken })

@@ -1,4 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext, input } from "@azure/functions";
+import { authenticateRequest } from "../shared/auth";
 
 const signalRInput = input.generic({
   type: "signalRConnectionInfo",
@@ -10,6 +11,9 @@ async function negotiate(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
+  const authError = authenticateRequest(request);
+  if (authError) return authError;
+
   const connectionInfo = context.extraInputs.get(signalRInput);
 
   return {
