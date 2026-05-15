@@ -37,7 +37,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 2: Query Latest Status
+## ~~Slice 2: Query Latest Status~~ ✅
 
 **Goal:** Read back what we wrote. Prove the query path works.
 
