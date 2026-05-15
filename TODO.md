@@ -458,81 +458,32 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 19: Nightly Aggregation
+## Slice 19: Android App — Project Setup + API Client
 
-**Goal:** Raw readings older than 90 days are replaced by daily summaries. A timer function computes nightly stats.
-
-**What to build:**
-- `api/src/functions/nightlyAggregation.ts` — Timer trigger (08:00 UTC daily)
-- For each patient: query readings for completed night using `nightDate = (timestamp + 12h).date()`
-- Compute: readingCount, durationSeconds, spo2 avg/min/max, hr avg/min/max, timeBelow90Seconds, timeBelow88Seconds, pctBelow90, pctBelow88
-- Upsert to `dailySummaries` container (idempotent by `id = patientId:nightDate`)
-- Create `dailySummaries` container in Cosmos DB (partition key `/patientId`, no TTL)
-- `api/src/functions/querySummaries.ts` — `GET /api/patients/:id/summaries?days=N`
-
-**Spec references:**
-- Data model: `docs/specs/data-model.md` — `dailySummaries` container, night date logic
-- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`, Timer functions
-
-**Verify:**
-1. Seed a full night of readings (22:00-06:00, every 15s, SpO2 varying 90-98)
-2. Manually trigger aggregation function
-3. Check `dailySummaries` container — document with correct nightDate, stats match seeded data
-4. `GET /api/patients/:id/summaries?days=30` — returns the summary
-5. Re-trigger aggregation — same document updated (upsert, not duplicate)
-
----
-
-## Slice 20: Nightly Summary Table on History Page
-
-**Goal:** History page shows nightly summaries and seamlessly blends raw + summary data.
-
-**What to build:**
-- `web/src/components/NightlySummaryTable.tsx` — one row per night: date, avg SpO2, min SpO2, time below 90%, avg HR, count
-- Add to history page below the charts
-- For date ranges beyond 90 days: fetch from summaries endpoint instead of readings
-- Long-term trend chart: plot avg SpO2 per night from summaries
-
-**Spec references:**
-- Web: `docs/specs/web-app.md` — NightlySummaryTable, history page long-term trends
-- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`
-
-**Verify:**
-1. Have both raw readings (recent) and daily summaries (older) in Cosmos
-2. Navigate to `/history`, select 90d range — see chart with raw data
-3. Select "all time" or a range spanning summary-only dates — chart uses summary data
-4. Nightly summary table shows each night's stats
-5. Click a recent night row — drills down to raw readings for that night
-
----
-
-## Slice 21: Android App — Project Setup + Login
-
-**Goal:** Android app shell that authenticates with Azure AD B2C and fetches the patient list.
+**Goal:** Android app shell that connects to the API, fetches patient list, and lets the user select which patient to monitor.
 
 **What to build:**
 - Initialize `android/O2Monitor/` — Kotlin, min SDK 26, Jetpack Compose, Hilt
-- Gradle dependencies: MSAL, OkHttp, Room, Hilt, Compose
-- `network/AuthManager.kt` — MSAL B2C login (interactive + silent refresh)
-- `network/ApiClient.kt` — `getPatients()`, `getUserProfile()` with Bearer token
-- Login screen (Compose): "Sign In" button → MSAL redirect
-- Patient select screen: list from `GET /api/patients`, tap to select, save to SharedPreferences
+- Gradle dependencies: OkHttp, Room, Hilt, Compose
+- `network/ApiClient.kt` — `getPatients()`, `postReading()`, `postBatch()` with API key header (`x-api-key`)
+- API key and server URL stored in SharedPreferences (configured on first launch)
+- Setup screen: enter server URL + API key + select patient
 - Minimal dashboard screen: shows selected patient name + "Not monitoring yet"
 
 **Spec references:**
-- Android: `docs/specs/android-app.md` — Tech Stack, AuthManager, Screens (Login, Patient Select)
+- Android: `docs/specs/android-app.md` — Tech Stack, ApiClient, Screens
+- API: `docs/specs/api.md` — `GET /api/patients`, `POST /api/readings`
 
 **Verify:**
 1. Build and install APK
-2. Open app — login screen appears
-3. Tap "Sign In" — B2C login flow in browser
-4. After login — patient select screen shows your patients
-5. Select a patient — dashboard screen shows patient name
-6. Kill and reopen app — still logged in (silent token refresh), same patient selected
+2. Open app — setup screen appears (enter server URL + API key)
+3. After setup — patient select screen shows your patients from the API
+4. Select a patient — dashboard screen shows patient name
+5. Kill and reopen app — settings persist, same patient selected
 
 ---
 
-## Slice 22: Android BLE Protocol Layer
+## Slice 20: Android BLE Protocol Layer
 
 **Goal:** Port the BLE protocol to Kotlin and prove it parses real oximeter packets correctly.
 
@@ -557,7 +508,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 23: Android BLE Service + Live Readings
+## Slice 21: Android BLE Service + Live Readings
 
 **Goal:** Android app connects to the oximeter, reads vitals every 5 seconds, and displays them.
 
@@ -588,7 +539,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 24: Android Cloud Upload + Offline Queue
+## Slice 22: Android Cloud Upload + Offline Queue
 
 **Goal:** Readings from the Android BLE service are uploaded to Azure and appear on the web dashboard.
 
@@ -612,51 +563,79 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 25: Android Batch Upload
+## Slice 23: Android Batch Upload + Boot Receiver
 
-**Goal:** Offline queue flushes efficiently using the batch endpoint.
+**Goal:** Offline queue flushes efficiently via batch endpoint. App survives reboots.
 
 **What to build:**
 - `api/src/functions/ingestBatch.ts` — `POST /api/readings/batch`, deduplicates by `(patientId, timestamp)`, bulk writes, returns accepted/rejected counts
 - Only push most recent reading to SignalR (avoid flooding)
 - Update Android `ReadingRepository.flushToCloud()` to use batch endpoint when queue > 1
+- `util/BootReceiver.kt` — starts BleService on `BOOT_COMPLETED`
+- Request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` on first launch
 
 **Spec references:**
 - API: `docs/specs/api.md` — `POST /api/readings/batch`
-- Android: `docs/specs/android-app.md` — ReadingRepository
+- Android: `docs/specs/android-app.md` — ReadingRepository, Boot receiver, battery optimization
 
 **Verify:**
 1. Disconnect phone WiFi for 5 minutes while BLE reads
 2. Queue shows ~60 readings
 3. Reconnect WiFi — app flushes as one batch
-4. API returns `{ "accepted": 60, "rejected": 0 }`
-5. Web dashboard shows latest reading (not replaying 60 updates)
-6. Repeat disconnect/reconnect — no duplicates in Cosmos
+4. Web dashboard shows latest reading (not replaying 60 updates)
+5. Reboot phone — notification reappears, BLE service resumes automatically
 
 ---
 
-## Slice 26: Android Boot Receiver + Battery Optimization
+## Slice 24: Nightly Aggregation
 
-**Goal:** App survives reboots and Android battery management.
+**Goal:** Raw readings older than 90 days are replaced by daily summaries. A timer function computes nightly stats.
 
 **What to build:**
-- `util/BootReceiver.kt` — starts BleService on `BOOT_COMPLETED`
-- Register in AndroidManifest
-- Request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` on first launch
-- Settings screen: device info, account info, logout button, app version
+- `api/src/functions/nightlyAggregation.ts` — Timer trigger (08:00 UTC daily)
+- For each patient: query readings for completed night using `nightDate = (timestamp + 12h).date()`
+- Compute: readingCount, durationSeconds, spo2 avg/min/max, hr avg/min/max, timeBelow90Seconds, timeBelow88Seconds, pctBelow90, pctBelow88
+- Upsert to `dailySummaries` container (idempotent by `id = patientId:nightDate`)
+- Create `dailySummaries` container in Cosmos DB (partition key `/patientId`, no TTL)
+- `api/src/functions/querySummaries.ts` — `GET /api/patients/:id/summaries?days=N`
 
 **Spec references:**
-- Android: `docs/specs/android-app.md` — Boot receiver, battery optimization, Settings screen
+- Data model: `docs/specs/data-model.md` — `dailySummaries` container, night date logic
+- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`, Timer functions
 
 **Verify:**
-1. App is monitoring, reboot the phone
-2. After boot completes — notification reappears, BLE service resumes automatically
-3. Check battery settings — app is listed as "Not optimized"
-4. Leave running overnight — confirm readings still flowing in the morning
+1. Seed a full night of readings (22:00-06:00, every 15s, SpO2 varying 90-98)
+2. Manually trigger aggregation function
+3. Check `dailySummaries` container — document with correct nightDate, stats match seeded data
+4. `GET /api/patients/:id/summaries?days=30` — returns the summary
+5. Re-trigger aggregation — same document updated (upsert, not duplicate)
 
 ---
 
-## Slice 27: Responsive Web Design + Mobile Polish
+## Slice 25: Nightly Summary Table on History Page
+
+**Goal:** History page shows nightly summaries and seamlessly blends raw + summary data.
+
+**What to build:**
+- `web/src/components/NightlySummaryTable.tsx` — one row per night: date, avg SpO2, min SpO2, time below 90%, avg HR, count
+- Add to history page below the charts
+- For date ranges beyond 90 days: fetch from summaries endpoint instead of readings
+- Long-term trend chart: plot avg SpO2 per night from summaries
+
+**Spec references:**
+- Web: `docs/specs/web-app.md` — NightlySummaryTable, history page long-term trends
+- API: `docs/specs/api.md` — `GET /api/patients/:id/summaries`
+
+**Verify:**
+1. Have both raw readings (recent) and daily summaries (older) in Cosmos
+2. Navigate to `/history`, select 90d range — see chart with raw data
+3. Select "all time" or a range spanning summary-only dates — chart uses summary data
+4. Nightly summary table shows each night's stats
+5. Click a recent night row — drills down to raw readings for that night
+
+---
+
+## Slice 26: Responsive Web Design + Mobile Polish
 
 **Goal:** Web dashboard works well on phones and tablets with large, readable vitals.
 
@@ -683,7 +662,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 28: CI/CD — API Deployment
+## Slice 27: CI/CD — API Deployment
 
 **Goal:** Pushing to main auto-deploys Azure Functions.
 
@@ -703,7 +682,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 29: CI/CD — Web + Android Deployment
+## Slice 28: CI/CD — Web + Android Deployment
 
 **Goal:** Web app and Android APK deploy automatically.
 
