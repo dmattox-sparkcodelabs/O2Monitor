@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fetchPatient, updatePatient } from "@/lib/api";
 import { usePatient } from "@/hooks/usePatient";
 import ThresholdEditor from "@/components/ThresholdEditor";
+import AccessManager from "@/components/AccessManager";
 import Nav from "@/components/Nav";
 
 interface PatientFull {
@@ -158,6 +159,13 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {selectedId && (
+          <section>
+            <h2 className="text-lg font-medium mb-4">Access Management</h2>
+            <AccessManager patientId={selectedId} />
+          </section>
+        )}
 
         <div className="flex justify-end">
           <button

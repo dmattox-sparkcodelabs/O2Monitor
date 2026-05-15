@@ -403,7 +403,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 17: Access Management
+## ~~Slice 17: Access Management~~ ✅
 
 **Goal:** Patient owners can invite family members and assign roles.
 
