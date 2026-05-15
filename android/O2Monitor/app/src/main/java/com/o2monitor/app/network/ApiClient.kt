@@ -32,9 +32,6 @@ data class ReadingPayload(
 @Serializable
 data class IngestResponse(val id: String)
 
-@Serializable
-private data class PatientListResponse(val data: List<PatientSummary>)
-
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -57,7 +54,7 @@ class ApiClient(
                 error("HTTP ${response.code}: ${response.body?.string()}")
             }
             val body = response.body?.string() ?: error("Empty response body")
-            json.decodeFromString<PatientListResponse>(body).data
+            json.decodeFromString<List<PatientSummary>>(body)
         }
     }
 

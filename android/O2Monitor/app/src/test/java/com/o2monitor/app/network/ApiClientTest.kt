@@ -55,12 +55,10 @@ class ApiClientTest {
     @Test
     fun `getPatients parses valid JSON response`() = runTest {
         val responseBody = """
-            {
-                "data": [
-                    {"id": "patient-1", "name": "Dad", "deviceMac": "C8:F1:6B:56:7B:F1"},
-                    {"id": "patient-2", "name": "Mom", "deviceMac": "AA:BB:CC:DD:EE:FF"}
-                ]
-            }
+            [
+                {"id": "patient-1", "name": "Dad", "deviceMac": "C8:F1:6B:56:7B:F1"},
+                {"id": "patient-2", "name": "Mom", "deviceMac": "AA:BB:CC:DD:EE:FF"}
+            ]
         """.trimIndent()
         mockWebServer.enqueue(
             MockResponse()
@@ -85,7 +83,7 @@ class ApiClientTest {
         mockWebServer.enqueue(
             MockResponse()
                 .setResponseCode(200)
-                .setBody("""{"data":[]}""")
+                .setBody("""[]""")
                 .addHeader("Content-Type", "application/json")
         )
 
