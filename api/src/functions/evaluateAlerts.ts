@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getContainer } from "../shared/cosmos";
 import { evaluateAllAlerts } from "../shared/alertEvaluator";
+import { evaluateReconnect } from "../shared/disconnectEvaluator";
 import { getRoutingKey, triggerAlert, resolveAlert } from "../shared/pagerduty";
 import { Reading, Patient, Alert, DEFAULT_TTL } from "../shared/types";
 
@@ -45,6 +46,9 @@ export async function evaluateAlertsForReading(reading: Reading): Promise<void> 
 
   const actions = evaluateAllAlerts(reading, recentReadings, patient.alertConfig, unresolvedAlerts);
   const routingKey = getRoutingKey(patient.alertConfig.pagerdutyRoutingKey);
+
+  const reconnectAction = evaluateReconnect(unresolvedAlerts);
+  if (reconnectAction) actions.push(reconnectAction);
 
   for (const action of actions) {
     if (action.action === "create") {

@@ -300,7 +300,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 13: Disconnect Detection
+## ~~Slice 13: Disconnect Detection~~ ✅
 
 **Goal:** Detect when a patient's device stops sending data and fire a disconnect alert.
 

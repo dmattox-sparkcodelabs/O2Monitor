@@ -5,17 +5,26 @@ import { HubConnectionBuilder, HubConnection, LogLevel } from "@microsoft/signal
 import { LatestReading } from "@/lib/types";
 import { negotiateSignalR } from "@/lib/api";
 
+interface ConnectionStatusEvent {
+  patientId: string;
+  deviceOnline: boolean;
+  secondsSinceReading: number | null;
+}
+
 interface UseSignalROptions {
   patientId: string;
   onNewReading: (reading: LatestReading) => void;
+  onConnectionStatus?: (status: ConnectionStatusEvent) => void;
 }
 
-export function useSignalR({ patientId, onNewReading }: UseSignalROptions) {
+export function useSignalR({ patientId, onNewReading, onConnectionStatus }: UseSignalROptions) {
   const connectionRef = useRef<HubConnection | null>(null);
   const [connected, setConnected] = useState(false);
 
   const onNewReadingRef = useRef(onNewReading);
   onNewReadingRef.current = onNewReading;
+  const onConnectionStatusRef = useRef(onConnectionStatus);
+  onConnectionStatusRef.current = onConnectionStatus;
 
   const connect = useCallback(async () => {
     if (connectionRef.current) return;
@@ -32,6 +41,12 @@ export function useSignalR({ patientId, onNewReading }: UseSignalROptions) {
       connection.on("newReading", (data: LatestReading) => {
         if (data.patientId === patientId) {
           onNewReadingRef.current(data);
+        }
+      });
+
+      connection.on("connectionStatus", (data: ConnectionStatusEvent) => {
+        if (data.patientId === patientId && onConnectionStatusRef.current) {
+          onConnectionStatusRef.current(data);
         }
       });
 

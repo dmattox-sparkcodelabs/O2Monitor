@@ -69,9 +69,21 @@ export default function Dashboard() {
     setLastUpdate(new Date());
   }, []);
 
+  const handleConnectionStatus = useCallback((event: { deviceOnline: boolean; secondsSinceReading: number | null }) => {
+    setStatus((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        deviceOnline: event.deviceOnline,
+        secondsSinceReading: event.secondsSinceReading,
+      };
+    });
+  }, []);
+
   const { connected: signalRConnected } = useSignalR({
     patientId: selectedId ?? "",
     onNewReading: handleNewReading,
+    onConnectionStatus: handleConnectionStatus,
   });
 
   const reading = status?.latestReading ?? null;
