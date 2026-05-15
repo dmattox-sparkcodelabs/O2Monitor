@@ -54,6 +54,20 @@ export interface ApiError {
   };
 }
 
+export interface Alert {
+  id: string;
+  patientId: string;
+  alertType: string;
+  severity: string;
+  message: string;
+  spo2: number | null;
+  heartRate: number | null;
+  timestamp: string;
+  resolvedAt: string | null;
+  pagerdutyDedupKey: string;
+  ttl: number;
+}
+
 export const DEFAULT_TTL = 7776000; // 90 days in seconds
 
 export const DEFAULT_ALERT_CONFIG: AlertConfig = {

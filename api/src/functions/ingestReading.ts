@@ -4,6 +4,7 @@ import { getContainer } from "../shared/cosmos";
 import { authenticateRequest } from "../shared/auth";
 import { validateIngestRequest } from "../shared/validation";
 import { buildNewReadingMessage } from "../shared/signalr";
+import { evaluateAlertsForReading } from "./evaluateAlerts";
 import { Reading, DEFAULT_TTL } from "../shared/types";
 
 const signalROutput = output.generic({
@@ -57,6 +58,12 @@ async function ingestReading(
   await container.items.create(reading);
 
   context.extraOutputs.set(signalROutput, [buildNewReadingMessage(reading.patientId, reading)]);
+
+  try {
+    await evaluateAlertsForReading(reading);
+  } catch (err) {
+    context.log(`Alert evaluation failed: ${err}`);
+  }
 
   context.log(`Ingested reading ${id} for patient ${reading.patientId}: SpO2=${reading.spo2} HR=${reading.heartRate}`);
 

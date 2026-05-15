@@ -227,7 +227,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 10: Alert Evaluation (SpO2 Critical)
+## ~~Slice 10: Alert Evaluation (SpO2 Critical)~~ ✅
 
 **Goal:** When SpO2 stays below threshold for the configured duration, an alert document appears in Cosmos. Start with just one alert type to prove the change feed pipeline.
 

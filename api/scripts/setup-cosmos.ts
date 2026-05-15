@@ -29,6 +29,13 @@ async function main() {
     },
   });
 
+  console.log("Creating 'alerts' container...");
+  await database.containers.createIfNotExists({
+    id: "alerts",
+    partitionKey: { paths: ["/patientId"] },
+    defaultTtl: -1,
+  });
+
   console.log("Creating 'patients' container...");
   await database.containers.createIfNotExists({
     id: "patients",
