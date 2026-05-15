@@ -483,7 +483,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 20: Android BLE Protocol Layer
+## ~~Slice 20: Android BLE Protocol Layer~~ ✅
 
 **Goal:** Port the BLE protocol to Kotlin and prove it parses real oximeter packets correctly.
 
