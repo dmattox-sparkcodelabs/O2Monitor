@@ -51,3 +51,6 @@ backups/
 # Vision service data (face embeddings, cameras config)
 vision/data/*
 !vision/data/.gitkeep
+
+# Windows baseline capture (DB covered by *.db above; this is for the per-machine config)
+windows/o2_baseline.config.json
