@@ -664,7 +664,44 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 27: CI/CD — API Deployment
+## Slice 27: History-Based BLE Monitoring (Battery Optimization)
+
+**Goal:** Replace live 5s polling with periodic history download. Every 60 seconds, fetch accumulated data points from the oximeter's internal recording, then batch upload to Azure. Dramatically reduces battery usage for overnight monitoring.
+
+**What to build:**
+- Port `archive/windows/session.py` file download protocol to Kotlin:
+  - CMD_INFO (0x14): get device info + file list
+  - CMD_FILE_OPEN (0x03), CMD_FILE_READ (0x04), CMD_FILE_CLOSE (0x05): download .vld files
+  - CMD_CONFIG (0x16): set device time
+- Port `archive/windows/history.py` .vld v3 parser to Kotlin:
+  - 40-byte header parsing (timestamps, summary stats, record count)
+  - N records of 5 bytes each: spo2, hr, invalid_flag, motion, vibration
+  - Resolution: 2 or 4 seconds per record
+- Update BleService:
+  - On connect: sync device clock, get device info
+  - Every 60s: download new recording data since last fetch
+  - Parse .vld records into readings with computed timestamps
+  - Batch upload all new readings to Azure
+  - Update dashboard with latest reading from the batch
+- Keep command 0x17 (live poll) as a fallback for immediate first reading on connect
+
+**Spec references:**
+- BLE protocol: `archive/windows/protocol.py` — commands 0x03-0x05, 0x14, 0x16
+- Session management: `archive/windows/session.py` — download_file, get_info, set_time
+- History parsing: `archive/windows/history.py` — parse_vld_v3, VldRecord
+- Android: `docs/specs/android-app.md` — BLE Protocol section
+
+**Verify:**
+1. Put oximeter on finger, start monitoring
+2. First reading appears within 5s (live poll fallback)
+3. After 60s: batch of ~15-30 readings arrives (from .vld download)
+4. Web dashboard updates with latest reading from batch
+5. Leave running 1 hour: battery drain < 2%
+6. All historical readings have correct timestamps (not just "now")
+
+---
+
+## Slice 28: CI/CD — API Deployment
 
 **Goal:** Pushing to main auto-deploys Azure Functions.
 
@@ -684,7 +721,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 28: CI/CD — Web + Android Deployment
+## Slice 29: CI/CD — Web + Android Deployment
 
 **Goal:** Web app and Android APK deploy automatically.
 
