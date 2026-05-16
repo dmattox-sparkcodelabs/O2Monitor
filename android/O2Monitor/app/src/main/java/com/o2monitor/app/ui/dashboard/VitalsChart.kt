@@ -179,14 +179,11 @@ private fun VitalsChartContent(
         DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
     }
 
-    val step = readings.size.coerceAtLeast(1) / 4
     val xValueFormatter = CartesianValueFormatter { _, x, _ ->
         val idx = x.toInt()
-        if (step > 0 && idx % step == 0) {
-            readings.getOrNull(idx)?.let { record ->
-                runCatching { timeFormatter.format(Instant.parse(record.timestamp)) }.getOrDefault("")
-            } ?: ""
-        } else ""
+        readings.getOrNull(idx)?.let { record ->
+            runCatching { timeFormatter.format(Instant.parse(record.timestamp)) }.getOrDefault(" ")
+        } ?: " "
     }
 
     val spo2Layer = rememberLineCartesianLayer(
