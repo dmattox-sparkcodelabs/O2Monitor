@@ -754,7 +754,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 30: Android Charts (SpO2 + HR)
+## ~~Slice 30: Android Charts (SpO2 + HR)~~ ✅
 
 **Goal:** Dashboard shows SpO2 and HR charts matching the web dashboard, loaded from the API.
 
