@@ -664,7 +664,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 27: History-Based BLE Monitoring (Battery Optimization)
+## ~~Slice 27: History-Based BLE Monitoring (Battery Optimization)~~ ✅
 
 **Goal:** Replace live 5s polling with periodic history download. Every 60 seconds, fetch accumulated data points from the oximeter's internal recording, then batch upload to Azure. Dramatically reduces battery usage for overnight monitoring.
 
