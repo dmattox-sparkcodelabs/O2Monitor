@@ -53,7 +53,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    val prefs: SharedPreferences
+    val prefs: SharedPreferences,
+    val httpClient: okhttp3.OkHttpClient
 ) : ViewModel() {
     val patientName: String
         get() = prefs.getString("patient_name", "Unknown Patient") ?: "Unknown Patient"
@@ -129,7 +130,8 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(horizontal = 24.dp)
+                .padding(top = 48.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -285,6 +287,7 @@ fun DashboardScreen(
                 VitalsChart(
                     patientId = patientId,
                     prefs = prefs,
+                    httpClient = viewModel.httpClient,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(24.dp))

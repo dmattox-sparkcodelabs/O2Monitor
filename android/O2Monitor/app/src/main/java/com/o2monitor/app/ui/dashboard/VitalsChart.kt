@@ -61,6 +61,7 @@ private val TIME_RANGE_LABELS = listOf("1h", "6h", "24h")
 fun VitalsChart(
     patientId: String,
     prefs: SharedPreferences,
+    httpClient: OkHttpClient,
     modifier: Modifier = Modifier
 ) {
     val serverUrl = remember { prefs.getString("server_url", "") ?: "" }
@@ -68,7 +69,7 @@ fun VitalsChart(
 
     val apiClient = remember(serverUrl, apiKey) {
         ApiClient(
-            httpClient = OkHttpClient(),
+            httpClient = httpClient,
             baseUrl = serverUrl,
             apiKey = apiKey
         )

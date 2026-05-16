@@ -74,6 +74,8 @@ class BleService : Service() {
     private var lastReadingTimeMs: Long = 0L
     private var latestReading: OxiReading? = null
     private var reconnectDelayMs: Long = 5_000L
+    private var reconnectAttempt: Int = 0
+    private val backoffSchedule = longArrayOf(5_000, 60_000, 120_000, 300_000, 600_000)
     private var session: O2Session? = null
     private val downloadedFiles = mutableSetOf<String>()
     private var sessionInitialized = false
@@ -159,6 +161,7 @@ class BleService : Service() {
         updateState(BleState.READING)
         lastReadingTimeMs = System.currentTimeMillis()
         reconnectDelayMs = 5_000L
+        reconnectAttempt = 0
         sessionInitialized = false
         downloadedFiles.clear()
         val g = gatt
@@ -176,8 +179,10 @@ class BleService : Service() {
         sessionInitialized = false
         disconnectGatt()
         updateState(BleState.RECONNECTING)
-        handler.postDelayed(reconnectRunnable, reconnectDelayMs)
-        reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(30_000L)
+        val delay = backoffSchedule[reconnectAttempt.coerceAtMost(backoffSchedule.size - 1)]
+        reconnectAttempt++
+        handler.postDelayed(reconnectRunnable, delay)
+        android.util.Log.i("BleService", "Reconnecting in ${delay / 1000}s (attempt $reconnectAttempt)")
     }
 
     // ---- BLE Scanning ----
