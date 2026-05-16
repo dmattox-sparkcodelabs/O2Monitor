@@ -709,7 +709,74 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 28: CI/CD — API Deployment
+## Slice 28: Lock Screen Notification with Live Vitals
+
+**Goal:** Phone lock screen shows current SpO2 and HR in large text, updated with each reading. Visible without unlocking.
+
+**What to build:**
+- Update BleService foreground notification:
+  - `VISIBILITY_PUBLIC` so it shows on lock screen
+  - Priority `HIGH` / importance `HIGH` for heads-up display
+  - Custom notification layout with large SpO2 and HR numbers
+  - Update notification on every valid reading (not blocked by sessionBusy)
+- Notification should show: "SpO2 97% | HR 72 | Battery 85%" when monitoring
+- Show "Scanning..." / "Reconnecting..." when not connected
+
+**Verify:**
+1. Start monitoring with oximeter on finger
+2. Lock the phone
+3. Lock screen shows notification with current SpO2/HR values
+4. Values update as new readings arrive
+5. Notification persists until monitoring is stopped
+
+---
+
+## Slice 29: Android Settings Screen
+
+**Goal:** Proper settings screen for device pairing and patient selection, accessible from the dashboard.
+
+**What to build:**
+- `ui/settings/SettingsScreen.kt` — settings page with:
+  - **Device Pairing**: scan for nearby O2M devices, show list with signal strength, tap to pair (saves MAC to SharedPreferences `device_mac`)
+  - **Patient Selection**: fetch patient list from API, select which patient this device monitors
+  - **Server Configuration**: edit server URL and API key
+  - **Connection Status**: show current device MAC, connection state
+- Add settings icon/button to dashboard header
+- Navigation: dashboard ↔ settings
+- Replace the one-time setup flow — settings screen IS the setup
+
+**Verify:**
+1. Open app → dashboard → tap settings
+2. Scan for devices → see "O2M XXXX" in list → tap to pair
+3. Change patient selection
+4. Go back to dashboard → monitoring uses new device/patient
+5. Settings persist across app restart
+
+---
+
+## Slice 30: Android Charts (SpO2 + HR)
+
+**Goal:** Dashboard shows SpO2 and HR charts matching the web dashboard, loaded from the API.
+
+**What to build:**
+- Add Vico charting library dependency
+- `ui/dashboard/VitalsChart.kt` — dual-axis line chart (SpO2 left, HR right)
+- Load recent readings from `GET /api/patients/:id/readings?hours=1`
+- Time range toggle: 1h | 6h | 24h
+- SpO2 threshold zones: red below 90%, yellow 90-92%
+- Auto-refresh on new readings
+- Add chart below vitals cards on dashboard
+
+**Verify:**
+1. Start monitoring → readings accumulate
+2. Dashboard shows chart with SpO2 (green) and HR (blue) lines
+3. Toggle time range — chart rescales
+4. Threshold zones visible
+5. Chart updates as new readings arrive
+
+---
+
+## Slice 31: CI/CD — API Deployment
 
 **Goal:** Pushing to main auto-deploys Azure Functions.
 
@@ -729,7 +796,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 29: CI/CD — Web + Android Deployment
+## Slice 32: CI/CD — Web + Android Deployment
 
 **Goal:** Web app and Android APK deploy automatically.
 
