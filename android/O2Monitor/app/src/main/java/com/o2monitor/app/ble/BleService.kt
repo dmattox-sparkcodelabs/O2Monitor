@@ -373,7 +373,7 @@ class BleService : Service() {
         scheduleStaleWatchdog()
 
         // Enqueue and upload in background
-        val patientId = prefs.getString("selected_patient_id", null)
+        val patientId = prefs.getString("patient_id", null)
         serviceScope.launch {
             if (patientId != null) {
                 repository.enqueue(patientId, reading)

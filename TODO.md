@@ -541,7 +541,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 22: Android Cloud Upload + Offline Queue
+## ~~Slice 22: Android Cloud Upload + Offline Queue~~ ✅
 
 **Goal:** Readings from the Android BLE service are uploaded to Azure and appear on the web dashboard.
 
