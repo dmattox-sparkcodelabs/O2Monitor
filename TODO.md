@@ -731,7 +731,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 29: Android Settings Screen
+## ~~Slice 29: Android Settings Screen~~ ✅
 
 **Goal:** Proper settings screen for device pairing and patient selection, accessible from the dashboard.
 
