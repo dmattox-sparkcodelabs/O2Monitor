@@ -221,7 +221,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <footer className="text-center text-xs text-gray-700 py-4">
+      <footer className="text-center text-xs text-gray-700 py-4 pb-20 md:pb-4">
         NOT FOR MEDICAL USE — Proof of concept only
       </footer>
     </main>

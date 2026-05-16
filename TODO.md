@@ -637,7 +637,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 26: Responsive Web Design + Mobile Polish
+## ~~Slice 26: Responsive Web Design + Mobile Polish~~ ✅
 
 **Goal:** Web dashboard works well on phones and tablets with large, readable vitals.
 
