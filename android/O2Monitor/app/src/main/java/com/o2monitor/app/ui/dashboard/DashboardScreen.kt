@@ -330,6 +330,28 @@ fun DashboardScreen(
                 )
             }
 
+            if (isRunning && bleState != BleState.READING) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        // Restart service to reset backoff and retry immediately
+                        val stopIntent = Intent(context, BleService::class.java).apply {
+                            action = BleService.ACTION_STOP
+                        }
+                        context.startService(stopIntent)
+                        val startIntent = Intent(context, BleService::class.java)
+                        context.startForegroundService(startIntent)
+                        bleState = BleState.SCANNING
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("⟳  Retry Connection", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
             if (isBatteryOptimized) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
