@@ -565,7 +565,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 23: Android Batch Upload + Boot Receiver
+## ~~Slice 23: Android Batch Upload + Boot Receiver~~ ✅
 
 **Goal:** Offline queue flushes efficiently via batch endpoint. App survives reboots.
 

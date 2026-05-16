@@ -50,3 +50,28 @@ export function validateCreatePatientRequest(body: unknown): ValidationError | n
 
   return null;
 }
+
+export function validateBatchRequest(body: unknown): ValidationError | null {
+  if (!body || typeof body !== "object") {
+    return { code: "INVALID_REQUEST", message: "Request body is required" };
+  }
+
+  const b = body as Record<string, unknown>;
+
+  if (!Array.isArray(b.readings)) {
+    return { code: "INVALID_REQUEST", message: "readings must be an array" };
+  }
+
+  if (b.readings.length === 0) {
+    return { code: "INVALID_REQUEST", message: "readings array must not be empty" };
+  }
+
+  for (let i = 0; i < b.readings.length; i++) {
+    const err = validateIngestRequest(b.readings[i]);
+    if (err) {
+      return { code: err.code, message: `readings[${i}]: ${err.message}` };
+    }
+  }
+
+  return null;
+}
