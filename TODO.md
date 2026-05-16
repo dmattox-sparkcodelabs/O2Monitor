@@ -589,7 +589,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 24: Nightly Aggregation
+## ~~Slice 24: Nightly Aggregation~~ ✅
 
 **Goal:** Raw readings older than 90 days are replaced by daily summaries. A timer function computes nightly stats.
 

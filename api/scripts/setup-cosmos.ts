@@ -36,6 +36,12 @@ async function main() {
     defaultTtl: -1,
   });
 
+  console.log("Creating 'dailySummaries' container...");
+  await database.containers.createIfNotExists({
+    id: "dailySummaries",
+    partitionKey: { paths: ["/patientId"] },
+  });
+
   console.log("Creating 'patientAccess' container...");
   await database.containers.createIfNotExists({
     id: "patientAccess",
