@@ -25,7 +25,6 @@ import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.o2monitor.app.data.ReadingRepository
 import dagger.hilt.android.AndroidEntryPoint
-import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -58,8 +57,8 @@ class BleService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "o2monitor_ble"
         private const val NOTIFICATION_ID = 1001
         private const val SCAN_TIMEOUT_MS = 30_000L
-        private const val HISTORY_INTERVAL_MS = 60_000L
-        private const val STALE_TIMEOUT_MS = 180_000L  // 3× history interval
+        private const val POLL_INTERVAL_MS = 60_000L
+        private const val STALE_TIMEOUT_MS = 180_000L
 
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private val RX_UUID = UUID.fromString(BleProtocol.RX_UUID)
@@ -69,21 +68,18 @@ class BleService : Service() {
     private var state: BleState = BleState.IDLE
     private var gatt: BluetoothGatt? = null
     private var txCharacteristic: BluetoothGattCharacteristic? = null
-    private var session: O2Session? = null
+    private val packetParser = PacketParser()
     private val handler = Handler(Looper.getMainLooper())
     private var lastReadingTimeMs: Long = 0L
     private var latestReading: OxiReading? = null
     private var reconnectDelayMs: Long = 5_000L
 
-    // Tracks filenames already downloaded in this connection so we don't re-fetch
-    private val downloadedFiles = mutableSetOf<String>()
-
     // Runnable refs for cancellation
     private val scanTimeoutRunnable = Runnable { onScanTimeout() }
-    private val historyRunnable = object : Runnable {
+    private val pollRunnable = object : Runnable {
         override fun run() {
-            serviceScope.launch { downloadNewFiles() }
-            handler.postDelayed(this, HISTORY_INTERVAL_MS)
+            sendPollCommand()
+            handler.postDelayed(this, POLL_INTERVAL_MS)
         }
     }
     private val staleWatchdogRunnable = Runnable { onStaleTimeout() }
@@ -152,144 +148,16 @@ class BleService : Service() {
         updateState(BleState.READING)
         lastReadingTimeMs = System.currentTimeMillis()
         reconnectDelayMs = 5_000L
-        downloadedFiles.clear()
-
-        // Build the session now that we have gatt + txCharacteristic
-        val g = gatt ?: return
-        val tx = txCharacteristic ?: return
-        session = O2Session(g, tx)
-
-        // Kick off the initial setup + first poll on the IO dispatcher
-        serviceScope.launch { startReadingSession() }
-
+        handler.post(pollRunnable)
         scheduleStaleWatchdog()
     }
 
     private fun transitionToReconnecting() {
         cancelAllRunnables()
-        session = null
         disconnectGatt()
         updateState(BleState.RECONNECTING)
         handler.postDelayed(reconnectRunnable, reconnectDelayMs)
         reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(30_000L)
-    }
-
-    // ---- Session startup ----
-
-    /**
-     * Called once when READING state is entered (on IO dispatcher via serviceScope).
-     *
-     * Flow:
-     *   1. readSensors() — one immediate live reading for fast dashboard update
-     *   2. setTime()     — sync device clock
-     *   3. Schedule 60s repeating history download cycle
-     */
-    private suspend fun startReadingSession() {
-        val s = session ?: return
-
-        // 1. Immediate live reading
-        val initial = s.readSensors()
-        if (initial != null) {
-            handler.post { onReadingReceived(initial) }
-        }
-
-        // 2. Sync device clock
-        s.setTime(LocalDateTime.now())
-
-        // 3. Schedule history download cycle on main thread
-        handler.post {
-            serviceScope.launch { downloadNewFiles() }
-            handler.postDelayed(historyRunnable, HISTORY_INTERVAL_MS)
-        }
-    }
-
-    // ---- History download ----
-
-    /**
-     * Download any new .vld files from the device, parse them, and enqueue the
-     * resulting readings.  Called from the IO dispatcher (serviceScope.launch).
-     */
-    private suspend fun downloadNewFiles() {
-        val s = session ?: return
-
-        val info = s.getInfo() ?: return
-        val fileListRaw = info["FileList"] ?: return
-        val filenames = VldParser.parseFileList(fileListRaw)
-
-        for (filename in filenames) {
-            if (filename in downloadedFiles) continue
-
-            val blob = s.downloadFile(filename) ?: continue
-            downloadedFiles += filename
-
-            val (header, records) = try {
-                VldParser.parse(blob)
-            } catch (_: IllegalArgumentException) {
-                continue
-            }
-
-            val patientId = prefs.getString("patient_id", null)
-            var emittedAny = false
-
-            for (record in records) {
-                if (!record.isValid) continue
-
-                // Reconstruct the absolute timestamp for this record
-                val sessionStart = java.util.Calendar.getInstance().apply {
-                    set(
-                        header.startYear, header.startMonth - 1, header.startDay,
-                        header.startHour, header.startMinute, header.startSecond
-                    )
-                    set(java.util.Calendar.MILLISECOND, 0)
-                }.timeInMillis
-                val recordTimestampMs = sessionStart + (record.offsetSeconds * 1000).toLong()
-
-                val reading = OxiReading(
-                    spo2 = record.spo2,
-                    heartRate = record.heartRate,
-                    batteryLevel = 0,  // battery not stored in .vld records
-                    movement = record.motion
-                )
-
-                if (patientId != null) {
-                    repository.enqueueAt(patientId, reading, recordTimestampMs)
-                }
-                emittedAny = true
-
-                // Broadcast the most recent reading for dashboard updates
-                handler.post { onReadingReceived(reading) }
-            }
-
-            if (emittedAny) {
-                readingCount++
-                val uploadOk = repository.flushToCloud()
-                val queueCount = repository.pendingCount()
-
-                if (readingCount % 100 == 0) {
-                    repository.pruneExpired()
-                }
-
-                // Update the broadcast with queue state on the last reading
-                val last = records.lastOrNull { it.isValid }
-                if (last != null) {
-                    val lastReading = OxiReading(
-                        spo2 = last.spo2,
-                        heartRate = last.heartRate,
-                        batteryLevel = 0,
-                        movement = last.motion
-                    )
-                    val intent = Intent(ACTION_READING).apply {
-                        putExtra(EXTRA_SPO2, lastReading.spo2)
-                        putExtra(EXTRA_HEART_RATE, lastReading.heartRate)
-                        putExtra(EXTRA_BATTERY_LEVEL, lastReading.batteryLevel)
-                        putExtra(EXTRA_MOVEMENT, lastReading.movement)
-                        putExtra(EXTRA_QUEUE_COUNT, queueCount)
-                        putExtra(EXTRA_UPLOAD_OK, uploadOk)
-                    }
-                    LocalBroadcastManager.getInstance(this@BleService).sendBroadcast(intent)
-                }
-            }
-        }
     }
 
     // ---- BLE Scanning ----
@@ -440,20 +308,46 @@ class BleService : Service() {
             characteristic: BluetoothGattCharacteristic
         ) {
             if (characteristic.uuid == RX_UUID) {
-                @Suppress("DEPRECATION")
-                session?.feedNotification(characteristic.value)
+                val packets = packetParser.feed(characteristic.value)
+                for (packet in packets) {
+                    val reading = BleProtocol.parseReading(packet.payload) ?: continue
+                    handler.post { onReadingReceived(reading) }
+                }
             }
         }
 
-        // API level 33+ override — delegate to the session
+        // API level 33+ override — delegate to the compat version above
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
             if (characteristic.uuid == RX_UUID) {
-                session?.feedNotification(value)
+                val packets = packetParser.feed(value)
+                for (packet in packets) {
+                    val reading = BleProtocol.parseReading(packet.payload) ?: continue
+                    handler.post { onReadingReceived(reading) }
+                }
             }
+        }
+    }
+
+    // ---- Polling ----
+
+    @SuppressLint("MissingPermission")
+    private fun sendPollCommand() {
+        val tx = txCharacteristic ?: return
+        val g = gatt ?: return
+        val cmd = BleProtocol.buildCommand(BleProtocol.CMD_READ_SENSORS)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            g.writeCharacteristic(tx, cmd, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        } else {
+            @Suppress("DEPRECATION")
+            tx.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            @Suppress("DEPRECATION")
+            tx.value = cmd
+            @Suppress("DEPRECATION")
+            g.writeCharacteristic(tx)
         }
     }
 
@@ -473,10 +367,38 @@ class BleService : Service() {
     private fun onReadingReceived(reading: OxiReading) {
         latestReading = reading
         lastReadingTimeMs = System.currentTimeMillis()
+        readingCount++
 
-        // Reset stale watchdog whenever we successfully process data
+        // Reset watchdog
         scheduleStaleWatchdog()
 
+        // Enqueue and upload in background
+        val patientId = prefs.getString("patient_id", null)
+        serviceScope.launch {
+            if (patientId != null) {
+                repository.enqueue(patientId, reading)
+            }
+            val uploadOk = repository.flushToCloud()
+            val queueCount = repository.pendingCount()
+
+            // Prune expired readings every 100 readings
+            if (readingCount % 100 == 0) {
+                repository.pruneExpired()
+            }
+
+            // Broadcast to UI (on IO thread — LocalBroadcastManager is thread-safe)
+            val intent = Intent(ACTION_READING).apply {
+                putExtra(EXTRA_SPO2, reading.spo2)
+                putExtra(EXTRA_HEART_RATE, reading.heartRate)
+                putExtra(EXTRA_BATTERY_LEVEL, reading.batteryLevel)
+                putExtra(EXTRA_MOVEMENT, reading.movement)
+                putExtra(EXTRA_QUEUE_COUNT, queueCount)
+                putExtra(EXTRA_UPLOAD_OK, uploadOk)
+            }
+            LocalBroadcastManager.getInstance(this@BleService).sendBroadcast(intent)
+        }
+
+        // Update notification
         updateNotification()
     }
 
@@ -523,7 +445,7 @@ class BleService : Service() {
 
     private fun cancelAllRunnables() {
         handler.removeCallbacks(scanTimeoutRunnable)
-        handler.removeCallbacks(historyRunnable)
+        handler.removeCallbacks(pollRunnable)
         handler.removeCallbacks(staleWatchdogRunnable)
         handler.removeCallbacks(reconnectRunnable)
     }
