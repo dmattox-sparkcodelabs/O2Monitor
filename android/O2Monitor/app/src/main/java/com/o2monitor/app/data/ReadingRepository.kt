@@ -19,6 +19,26 @@ class ReadingRepository(
             batteryLevel = reading.batteryLevel,
             movement = reading.movement,
             timestamp = java.time.Instant.now().toString(),
+            source = "live",
+            deviceId = android.os.Build.MODEL
+        )
+        dao.insert(entity)
+    }
+
+    /**
+     * Enqueue a reading with a pre-computed timestamp (from a downloaded .vld history file).
+     * Uses [timestampMs] as the reading time and marks source as "history".
+     */
+    suspend fun enqueueAt(patientId: String, reading: OxiReading, timestampMs: Long) {
+        val isoTimestamp = java.time.Instant.ofEpochMilli(timestampMs).toString()
+        val entity = ReadingEntity(
+            patientId = patientId,
+            spo2 = reading.spo2,
+            heartRate = reading.heartRate,
+            batteryLevel = reading.batteryLevel,
+            movement = reading.movement,
+            timestamp = isoTimestamp,
+            source = "history",
             deviceId = android.os.Build.MODEL
         )
         dao.insert(entity)

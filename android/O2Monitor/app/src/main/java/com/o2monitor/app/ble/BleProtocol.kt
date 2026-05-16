@@ -29,6 +29,12 @@ data class Packet(
 object BleProtocol {
     const val RX_UUID = "0734594a-a8e7-4b1a-a6b1-cd5243059a57"
     const val TX_UUID = "8b00ace7-eb0b-49b0-bbe9-9aee0a26e1a3"
+
+    const val CMD_FILE_OPEN: Byte = 0x03
+    const val CMD_FILE_READ: Byte = 0x04
+    const val CMD_FILE_CLOSE: Byte = 0x05
+    const val CMD_INFO: Byte = 0x14
+    const val CMD_CONFIG: Byte = 0x16
     const val CMD_READ_SENSORS: Byte = 0x17.toByte()
 
     /**
@@ -54,28 +60,36 @@ object BleProtocol {
     }
 
     /**
-     * Build an empty-payload command packet ready to write to the TX characteristic.
+     * Build a request packet with optional block and payload.
      *
-     * Packet layout (8 bytes for empty payload):
+     * Packet layout:
      *   [0]    0xAA  — start marker
      *   [1]    cmd
      *   [2]    cmd ^ 0xFF  — negate byte
-     *   [3–4]  block as LE uint16 (0, 0)
-     *   [5–6]  payload length as LE uint16 (0, 0)
-     *   [7]    CRC of bytes [0..6]
+     *   [3–4]  block as LE uint16
+     *   [5–6]  payload length as LE uint16
+     *   [7..7+payLen-1]  payload
+     *   [-1]   CRC of all preceding bytes
+     *
+     * Port of Python build_packet().
      */
-    fun buildCommand(cmd: Byte): ByteArray {
+    fun buildPacket(cmd: Byte, block: Int = 0, payload: ByteArray = byteArrayOf()): ByteArray {
         val cmdInt = cmd.toInt() and 0xFF
         val header = byteArrayOf(
             0xAA.toByte(),
             cmd,
             (cmdInt xor 0xFF).toByte(),
-            0x00, 0x00,  // block LE uint16
-            0x00, 0x00   // payload length LE uint16
+            (block and 0xFF).toByte(),
+            (block shr 8 and 0xFF).toByte(),
+            (payload.size and 0xFF).toByte(),
+            (payload.size shr 8 and 0xFF).toByte()
         )
-        val crc = calcCrc(header)
-        return header + byteArrayOf(crc)
+        val body = header + payload
+        return body + byteArrayOf(calcCrc(body))
     }
+
+    /** Backwards-compatible empty-payload command builder. Delegates to buildPacket. */
+    fun buildCommand(cmd: Byte): ByteArray = buildPacket(cmd)
 
     /**
      * Parse a CMD_READ_SENSORS response payload into an OxiReading.
