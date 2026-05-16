@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -51,10 +53,12 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val prefs: SharedPreferences
+    val prefs: SharedPreferences
 ) : ViewModel() {
     val patientName: String
         get() = prefs.getString("patient_name", "Unknown Patient") ?: "Unknown Patient"
+    val patientId: String
+        get() = prefs.getString("patient_id", "") ?: ""
 }
 
 private data class OxiDisplayState(
@@ -80,6 +84,8 @@ fun DashboardScreen(
     onSettingsClick: () -> Unit = {}
 ) {
     val patientName = remember { viewModel.patientName }
+    val patientId = remember { viewModel.patientId }
+    val prefs = remember { viewModel.prefs }
     val context = LocalContext.current
 
     var isRunning by remember { mutableStateOf(false) }
@@ -122,6 +128,7 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -264,7 +271,26 @@ fun DashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // SpO2 + HR history chart
+            if (patientId.isNotBlank()) {
+                Text(
+                    text = "History",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                VitalsChart(
+                    patientId = patientId,
+                    prefs = prefs,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+            } else {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
 
             // Start / Stop button
             Button(

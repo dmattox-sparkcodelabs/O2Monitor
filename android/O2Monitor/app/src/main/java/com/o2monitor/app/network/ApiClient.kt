@@ -33,6 +33,24 @@ data class ReadingPayload(
 data class IngestResponse(val id: String)
 
 @Serializable
+data class ReadingRecord(
+    val id: String = "",
+    val timestamp: String,
+    val spo2: Int,
+    val heartRate: Int,
+    val batteryLevel: Int = 0,
+    val movement: Int = 0,
+    val source: String = "",
+    val deviceId: String = ""
+)
+
+@Serializable
+data class ReadingsResponse(
+    val readings: List<ReadingRecord>,
+    val count: Int = 0
+)
+
+@Serializable
 data class BatchRequest(val readings: List<ReadingPayload>)
 
 @Serializable
@@ -78,6 +96,22 @@ class ApiClient(
             }
             val responseBody = response.body?.string() ?: error("Empty response body")
             json.decodeFromString<IngestResponse>(responseBody)
+        }
+    }
+
+    suspend fun getReadings(patientId: String, hours: Int = 1): Result<ReadingsResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/patients/$patientId/readings?hours=$hours")
+                .addHeader("x-api-key", apiKey)
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                error("HTTP ${response.code}: ${response.body?.string()}")
+            }
+            val body = response.body?.string() ?: error("Empty response body")
+            json.decodeFromString<ReadingsResponse>(body)
         }
     }
 

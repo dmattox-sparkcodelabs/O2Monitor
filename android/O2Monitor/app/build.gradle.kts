@@ -78,6 +78,9 @@ dependencies {
     // LocalBroadcastManager
     implementation(libs.androidx.localbroadcastmanager)
 
+    // Vico Charts
+    implementation(libs.vico.compose.m3)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
