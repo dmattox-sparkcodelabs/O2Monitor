@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.o2monitor.app.ui.dashboard.DashboardScreen
 import com.o2monitor.app.ui.patients.PatientSelectScreen
+import com.o2monitor.app.ui.settings.SettingsScreen
 import com.o2monitor.app.ui.setup.SetupScreen
 import com.o2monitor.app.ui.theme.O2MonitorTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -73,7 +74,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("dashboard") {
-                        DashboardScreen(permissionsGranted = blePermissionsGranted)
+                        DashboardScreen(
+                            permissionsGranted = blePermissionsGranted,
+                            onSettingsClick = { navController.navigate("settings") }
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }
