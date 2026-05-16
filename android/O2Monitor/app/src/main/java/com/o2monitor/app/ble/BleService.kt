@@ -109,7 +109,7 @@ class BleService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Initializing…"))
+        startForeground(NOTIFICATION_ID, buildNotification("O2 Monitor", "Initializing…"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -487,29 +487,47 @@ class BleService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
-            "O2 Monitor BLE",
-            NotificationManager.IMPORTANCE_LOW
+            "O2 Monitor",
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "BLE foreground service for oximeter monitoring"
+            description = "Live SpO2 and heart rate monitoring"
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
         }
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(text: String) =
-        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("O2 Monitor")
-            .setContentText(text)
+    private fun buildNotification(title: String, text: String): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setSilent(true)
-            .build()
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+
+        val r = latestReading
+        if (r != null && state == BleState.READING) {
+            builder
+                .setContentTitle("SpO2 ${r.spo2}%  •  HR ${r.heartRate} bpm")
+                .setContentText("Battery ${r.batteryLevel}%")
+                .setStyle(NotificationCompat.BigTextStyle()
+                    .bigText("SpO2  ${r.spo2}%\nHeart Rate  ${r.heartRate} bpm\nBattery  ${r.batteryLevel}%")
+                    .setBigContentTitle("O2 Monitor — Live"))
+        } else {
+            builder
+                .setContentTitle("O2 Monitor")
+                .setContentText(text)
+        }
+
+        return builder.build()
+    }
 
     private fun updateNotification() {
         val text = when (state) {
             BleState.READING -> {
                 val r = latestReading
-                if (r != null) "Monitoring SpO2 — ${r.spo2}% | HR ${r.heartRate}"
+                if (r != null) "SpO2 ${r.spo2}% | HR ${r.heartRate}"
                 else "Connected, waiting for reading…"
             }
             BleState.SCANNING -> "Scanning for oximeter…"
@@ -518,7 +536,7 @@ class BleService : Service() {
             BleState.IDLE -> "Idle"
         }
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
+        manager.notify(NOTIFICATION_ID, buildNotification("O2 Monitor", text))
     }
 
     // ---- Helpers ----

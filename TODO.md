@@ -709,7 +709,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 28: Lock Screen Notification with Live Vitals
+## ~~Slice 28: Lock Screen Notification with Live Vitals~~ ✅
 
 **Goal:** Phone lock screen shows current SpO2 and HR in large text, updated with each reading. Visible without unlocking.
 
