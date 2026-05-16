@@ -32,6 +32,12 @@ data class ReadingPayload(
 @Serializable
 data class IngestResponse(val id: String)
 
+@Serializable
+data class BatchRequest(val readings: List<ReadingPayload>)
+
+@Serializable
+data class BatchResponse(val accepted: Int, val rejected: Int)
+
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -72,6 +78,23 @@ class ApiClient(
             }
             val responseBody = response.body?.string() ?: error("Empty response body")
             json.decodeFromString<IngestResponse>(responseBody)
+        }
+    }
+
+    suspend fun postBatch(readings: List<ReadingPayload>): Result<BatchResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val body = json.encodeToString(BatchRequest(readings)).toRequestBody(JSON_MEDIA_TYPE)
+            val request = Request.Builder()
+                .url("${baseUrl.trimEnd('/')}/api/readings/batch")
+                .addHeader("x-api-key", apiKey)
+                .post(body)
+                .build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                error("HTTP ${response.code}: ${response.body?.string()}")
+            }
+            val responseBody = response.body?.string() ?: error("Empty response body")
+            json.decodeFromString<BatchResponse>(responseBody)
         }
     }
 }

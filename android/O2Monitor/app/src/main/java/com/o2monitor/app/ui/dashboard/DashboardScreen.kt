@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -76,6 +79,11 @@ fun DashboardScreen(
     var isRunning by remember { mutableStateOf(false) }
     var bleState by remember { mutableStateOf(BleState.IDLE) }
     var oxiState by remember { mutableStateOf(OxiDisplayState()) }
+
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    var isBatteryOptimized by remember {
+        mutableStateOf(!powerManager.isIgnoringBatteryOptimizations(context.packageName))
+    }
 
     // Register broadcast receiver for readings
     DisposableEffect(Unit) {
@@ -272,6 +280,29 @@ fun DashboardScreen(
                     },
                     style = MaterialTheme.typography.labelLarge
                 )
+            }
+
+            if (isBatteryOptimized) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        val intent = Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                        isBatteryOptimized = !powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Disable Battery Optimization",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
             }
         }
     }
