@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { fetchReadings } from "@/lib/api";
-import { ReadingRecord } from "@/lib/types";
+import { fetchReadings, fetchSummaries } from "@/lib/api";
+import { ReadingRecord, NightlySummary } from "@/lib/types";
 import { usePatient } from "@/hooks/usePatient";
 import HistoryChart from "@/components/HistoryChart";
+import NightlySummaryTable from "@/components/NightlySummaryTable";
 import Nav from "@/components/Nav";
 
 const RANGE_OPTIONS = [
@@ -18,23 +19,31 @@ const PAGE_SIZE = 50;
 export default function HistoryPage() {
   const { selectedId, loading: patientsLoading } = usePatient();
   const [readings, setReadings] = useState<ReadingRecord[]>([]);
+  const [summaries, setSummaries] = useState<NightlySummary[]>([]);
   const [rangeHours, setRangeHours] = useState(7 * 24);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
+
+  const rangeDays = Math.ceil(rangeHours / 24);
 
   const load = useCallback(async () => {
     if (!selectedId) return;
     setLoading(true);
     try {
-      const data = await fetchReadings(selectedId, rangeHours);
-      setReadings(data.readings);
+      const [readingsData, summariesData] = await Promise.all([
+        fetchReadings(selectedId, rangeHours),
+        fetchSummaries(selectedId, rangeDays),
+      ]);
+      setReadings(readingsData.readings);
+      setSummaries(summariesData.summaries);
       setPage(0);
     } catch {
       setReadings([]);
+      setSummaries([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedId, rangeHours]);
+  }, [selectedId, rangeHours, rangeDays]);
 
   useEffect(() => {
     load();
@@ -158,6 +167,13 @@ export default function HistoryPage() {
                 </div>
               )}
             </div>
+
+            {summaries.length > 0 && (
+              <div className="mt-8">
+                <h2 className="text-lg font-medium mb-4">Nightly Summaries</h2>
+                <NightlySummaryTable summaries={summaries} />
+              </div>
+            )}
           </>
         )}
       </div>

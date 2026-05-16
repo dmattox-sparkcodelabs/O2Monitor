@@ -614,7 +614,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## Slice 25: Nightly Summary Table on History Page
+## ~~Slice 25: Nightly Summary Table on History Page~~ ✅
 
 **Goal:** History page shows nightly summaries and seamlessly blends raw + summary data.
 

@@ -61,3 +61,23 @@ export interface AlertRecord {
 export interface AlertsResponse {
   alerts: AlertRecord[];
 }
+
+export interface NightlySummary {
+  nightDate: string;
+  readingCount: number;
+  durationSeconds: number;
+  spo2Avg: number;
+  spo2Min: number;
+  spo2Max: number;
+  hrAvg: number;
+  hrMin: number;
+  hrMax: number;
+  timeBelow90Seconds: number;
+  timeBelow88Seconds: number;
+  pctBelow90: number;
+  pctBelow88: number;
+}
+
+export interface SummariesResponse {
+  summaries: NightlySummary[];
+}
