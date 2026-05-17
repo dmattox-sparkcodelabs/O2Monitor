@@ -64,5 +64,11 @@ Credentials are stored in `.secrets.md` (gitignored). Contains:
 - CRC-8-CCITT with polynomial 0x07
 - See `archive/windows/protocol.py` for full protocol docs
 
+## Port Assignments (Slot #11)
+- Frontend (Next.js): 6013
+- Azure Functions API: 7071
+- Caddy HTTPS proxy: 7072
+- Backend (reserved): 7013
+
 ## Process Cleanup
 NEVER use blanket taskkill on python/node. Only kill processes on YOUR assigned ports.
