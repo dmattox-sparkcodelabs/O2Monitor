@@ -314,6 +314,37 @@ class BleProtocolTest {
         return header + recordData
     }
 
+    private fun buildV5VldBlob(
+        year: Int = 2026, month: Int = 5, day: Int = 17,
+        hour: Int = 0, minute: Int = 5, second: Int = 38,
+        duration: Int = 4,
+        recordData: ByteArray = byteArrayOf(
+            96, 102, 0, 22, 0,
+            95, 102, 0, 0, 0
+        )
+    ): ByteArray {
+        val header = ByteArray(40)
+        val buf = java.nio.ByteBuffer.wrap(header).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buf.putShort(5.toShort())                // version
+        buf.putShort(year.toShort())             // year
+        buf.put(month.toByte())                  // month
+        buf.put(day.toByte())                    // day
+        buf.put(hour.toByte())                   // hour
+        buf.put(minute.toByte())                 // minute
+        buf.put(second.toByte())                 // second
+        buf.putInt(header.size + recordData.size)// filesize
+        buf.putInt(duration)                     // duration seconds
+        buf.put(96.toByte())                     // spo2_avg
+        buf.put(88.toByte())                     // spo2_min
+        buf.put(0)                               // spo2_3pct
+        buf.put(0)                               // spo2_4pct
+        buf.put(0)                               // unknown1
+        buf.putShort(0)                          // time_under_90pct
+        buf.put(0)                               // events_under_90pct
+        buf.put(0)                               // o2_score
+        return header + recordData
+    }
+
     @Test
     fun `VldParser parse returns correct header for valid v3 blob`() {
         val blob = buildVldBlob()
@@ -351,7 +382,25 @@ class BleProtocolTest {
     }
 
     @Test
-    fun `VldParser parse rejects non-v3 files`() {
+    fun `VldParser parse returns correct records for valid v5 blob`() {
+        val blob = buildV5VldBlob()
+        val (header, records) = VldParser.parse(blob)
+
+        assertEquals(5, header.version)
+        assertEquals(2026, header.startYear)
+        assertEquals(5, header.startMonth)
+        assertEquals(17, header.startDay)
+        assertEquals(2.0, header.resolutionSeconds, 0.001)
+        assertEquals(2, records.size)
+        assertEquals(96, records[0].spo2)
+        assertEquals(102, records[0].heartRate)
+        assertEquals(22, records[0].motion)
+        assertTrue(records[0].isValid)
+        assertEquals(2.0, records[1].offsetSeconds, 0.001)
+    }
+
+    @Test
+    fun `VldParser parse rejects unsupported file versions`() {
         val blob = buildVldBlob(version = 2)
         try {
             VldParser.parse(blob)

@@ -102,20 +102,32 @@ fun DashboardScreen(
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                if (intent.action == BleService.ACTION_READING) {
-                    oxiState = OxiDisplayState(
-                        spo2 = intent.getIntExtra(BleService.EXTRA_SPO2, 0),
-                        heartRate = intent.getIntExtra(BleService.EXTRA_HEART_RATE, 0),
-                        batteryLevel = intent.getIntExtra(BleService.EXTRA_BATTERY_LEVEL, 0),
-                        movement = intent.getIntExtra(BleService.EXTRA_MOVEMENT, 0),
-                        uploadOk = intent.getBooleanExtra(BleService.EXTRA_UPLOAD_OK, false),
-                        queueCount = intent.getIntExtra(BleService.EXTRA_QUEUE_COUNT, 0)
-                    )
-                    bleState = BleState.READING
+                when (intent.action) {
+                    BleService.ACTION_READING -> {
+                        oxiState = OxiDisplayState(
+                            spo2 = intent.getIntExtra(BleService.EXTRA_SPO2, 0),
+                            heartRate = intent.getIntExtra(BleService.EXTRA_HEART_RATE, 0),
+                            batteryLevel = intent.getIntExtra(BleService.EXTRA_BATTERY_LEVEL, 0),
+                            movement = intent.getIntExtra(BleService.EXTRA_MOVEMENT, 0),
+                            uploadOk = intent.getBooleanExtra(BleService.EXTRA_UPLOAD_OK, false),
+                            queueCount = intent.getIntExtra(BleService.EXTRA_QUEUE_COUNT, 0)
+                        )
+                        isRunning = true
+                        bleState = BleState.READING
+                    }
+                    BleService.ACTION_STATE -> {
+                        val nextState = intent.getStringExtra(BleService.EXTRA_STATE)
+                            ?.let { runCatching { BleState.valueOf(it) }.getOrNull() }
+                            ?: return
+                        bleState = nextState
+                        isRunning = nextState != BleState.IDLE
+                    }
                 }
             }
         }
-        val filter = IntentFilter(BleService.ACTION_READING)
+        val filter = IntentFilter(BleService.ACTION_READING).apply {
+            addAction(BleService.ACTION_STATE)
+        }
         LocalBroadcastManager.getInstance(context).registerReceiver(receiver, filter)
         onDispose {
             LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)

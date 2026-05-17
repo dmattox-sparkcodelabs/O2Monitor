@@ -44,7 +44,7 @@ data class VldRecord(
 )
 
 /**
- * Parser for Viatom/Wellue stored recording files (.vld v3 format).
+ * Parser for Viatom/Wellue stored recording files (.vld v3/v5 format).
  *
  * File layout:
  *   - 40-byte header (26 fixed bytes + 14 bytes padding)
@@ -57,15 +57,18 @@ object VldParser {
     private const val HEADER_SIZE = 40
     private const val RECORD_SIZE = 5
 
-    // 26-byte fixed header struct (little-endian):
+    // 26-byte fixed header struct (little-endian), v3:
     //   version(H), year(H), month(B), day(B), hour(B), minute(B), second(B),
     //   filesize(H), filesize2(H), duration(H), duration2(H),
     //   spo2_avg(B), spo2_min(B), spo2_3pct(B), spo2_4pct(B), unknown1(B),
     //   time_under_90pct(H), events_under_90pct(B), o2_score(B)
+    //
+    // v5 keeps the same 40-byte header and 5-byte records, but bytes 9..16 are
+    // file_size(U32) and duration_seconds(U32) instead of paired U16 fields.
     private const val FIXED_HEADER_SIZE = 26
 
     /**
-     * Parse a .vld v3 file blob into a header and list of records.
+     * Parse a .vld v3/v5 file blob into a header and list of records.
      *
      * @throws IllegalArgumentException on malformed input (too short, wrong version,
      *   invalid timestamp, or no records)
@@ -78,7 +81,7 @@ object VldParser {
         val buf = ByteBuffer.wrap(blob, 0, FIXED_HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
 
         val version = buf.short.toInt() and 0xFFFF
-        require(version == 3) { "unsupported file version: $version" }
+        require(version == 3 || version == 5) { "unsupported file version: $version" }
 
         val year = buf.short.toInt() and 0xFFFF
         val month = buf.get().toInt() and 0xFF
@@ -94,10 +97,16 @@ object VldParser {
         require(minute in 0..59) { "invalid header timestamp: minute=$minute" }
         require(second in 0..59) { "invalid header timestamp: second=$second" }
 
-        /* filesize(H) */ buf.short
-        /* filesize2(H) */ buf.short
-        val duration = buf.short.toInt() and 0xFFFF
-        /* duration2(H) */ buf.short
+        val duration = if (version == 5) {
+            /* filesize(U32) */ buf.int
+            buf.int
+        } else {
+            /* filesize(H) */ buf.short
+            /* filesize2(H) */ buf.short
+            val duration16 = buf.short.toInt() and 0xFFFF
+            /* duration2(H) */ buf.short
+            duration16
+        }
         val spo2Avg = buf.get().toInt() and 0xFF
         val spo2Min = buf.get().toInt() and 0xFF
         /* spo2_3pct(B) */ buf.get()
@@ -119,6 +128,7 @@ object VldParser {
             when {
                 Math.abs(raw - 2.0) < 0.1 -> 2.0
                 Math.abs(raw - 4.0) < 0.1 -> 4.0
+                Math.abs(raw - 8.0) < 0.1 -> 8.0
                 else -> raw
             }
         }

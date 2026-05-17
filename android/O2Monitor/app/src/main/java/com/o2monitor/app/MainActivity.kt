@@ -2,6 +2,7 @@ package com.o2monitor.app
 
 import android.Manifest
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,13 @@ private val BLE_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_FINE_LOCATION
 )
 
+private val APP_PERMISSIONS: Array<String>
+    get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        BLE_PERMISSIONS + Manifest.permission.POST_NOTIFICATIONS
+    } else {
+        BLE_PERMISSIONS
+    }
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -47,11 +55,11 @@ class MainActivity : ComponentActivity() {
                 val permissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
                 ) { results ->
-                    blePermissionsGranted = results.values.all { it }
+                    blePermissionsGranted = BLE_PERMISSIONS.all { results[it] == true }
                 }
 
                 LaunchedEffect(Unit) {
-                    permissionLauncher.launch(BLE_PERMISSIONS)
+                    permissionLauncher.launch(APP_PERMISSIONS)
                 }
 
                 NavHost(navController = navController, startDestination = startDestination) {

@@ -66,7 +66,8 @@ import javax.inject.Inject
 private data class ScannedDevice(
     val name: String,
     val address: String,
-    val rssi: Int
+    val rssi: Int?,
+    val isCurrent: Boolean = false
 )
 
 @HiltViewModel
@@ -182,21 +183,51 @@ fun SettingsScreen(
             scanError = "Bluetooth not available"
             return
         }
-        scannedDevices = emptyList()
+        val savedMac = viewModel.currentDeviceMac?.trim()
+        scannedDevices = savedMac
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                listOf(
+                    ScannedDevice(
+                        name = "Current device",
+                        address = it,
+                        rssi = null,
+                        isCurrent = true
+                    )
+                )
+            }
+            ?: emptyList()
         scanError = null
         isScanning = true
 
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val name = result.device.name ?: return
-                if (!name.startsWith("O2M")) return
                 val address = result.device.address ?: return
+                val advertisedName = result.device.name ?: result.scanRecord?.deviceName
+                val currentMac = viewModel.currentDeviceMac?.trim()
+                val isCurrent = !currentMac.isNullOrBlank() &&
+                    address.equals(currentMac, ignoreCase = true)
+                val nameMatches = advertisedName?.let { name ->
+                    name.startsWith("O2") ||
+                        name.startsWith("Checkme") ||
+                        name.startsWith("Viatom") ||
+                        name.startsWith("Wellue")
+                } == true
+
+                if (!isCurrent && !nameMatches) return
+
+                val name = advertisedName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: if (isCurrent) "Current device" else return
                 val rssi = result.rssi
                 // Deduplicate by address, update RSSI
                 scannedDevices = scannedDevices
                     .filter { it.address != address }
-                    .plus(ScannedDevice(name, address, rssi))
-                    .sortedByDescending { it.rssi }
+                    .plus(ScannedDevice(name, address, rssi, isCurrent))
+                    .sortedWith(
+                        compareByDescending<ScannedDevice> { it.isCurrent }
+                            .thenByDescending { it.rssi ?: Int.MIN_VALUE }
+                    )
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -491,9 +522,16 @@ private fun DeviceRow(device: ScannedDevice, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
+            if (device.isCurrent) {
+                Text(
+                    text = "Current device",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
         Text(
-            text = "${device.rssi} dBm",
+            text = device.rssi?.let { "$it dBm" } ?: "Saved",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )

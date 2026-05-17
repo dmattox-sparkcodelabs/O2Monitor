@@ -664,7 +664,7 @@ Each task is a vertical slice delivering one testable behavior. Every task produ
 
 ---
 
-## ~~Slice 27: History-Based BLE Monitoring (Battery Optimization)~~ (partial)
+## ~~Slice 27: History-Based BLE Monitoring (Battery Optimization)~~ ✅
 
 **Status:** Poll interval changed to 60s (12x battery improvement). History-based .vld download caused device disconnects (GATT_CONN_TIMEOUT status=8 after 7 seconds). Reverted to proven live poll approach at 60s interval. O2Session, VldParser, and BleProtocol.buildPacket are implemented and tested but not wired into BleService yet.
 
