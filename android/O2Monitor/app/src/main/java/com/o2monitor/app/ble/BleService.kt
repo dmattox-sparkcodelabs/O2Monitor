@@ -13,7 +13,6 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Intent
@@ -59,7 +58,6 @@ class BleService : Service() {
         private const val SCAN_TIMEOUT_MS = 30_000L
         private const val POLL_INTERVAL_MS = 60_000L
         private const val STALE_TIMEOUT_MS = 180_000L
-        private const val HISTORY_INTERVAL_MS = 60_000L
 
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private val RX_UUID = UUID.fromString(BleProtocol.RX_UUID)
@@ -85,14 +83,10 @@ class BleService : Service() {
     private val scanTimeoutRunnable = Runnable { onScanTimeout() }
     private val pollRunnable = object : Runnable {
         override fun run() {
-            sendPollCommand()
+            if (!sessionBusy) {
+                sendPollCommand()
+            }
             handler.postDelayed(this, POLL_INTERVAL_MS)
-        }
-    }
-    private val historyRunnable = object : Runnable {
-        override fun run() {
-            serviceScope.launch { downloadNewFiles() }
-            handler.postDelayed(this, HISTORY_INTERVAL_MS)
         }
     }
     private val staleWatchdogRunnable = Runnable { onStaleTimeout() }
@@ -177,6 +171,7 @@ class BleService : Service() {
         cancelAllRunnables()
         session = null
         sessionInitialized = false
+        sessionBusy = false
         disconnectGatt()
         updateState(BleState.RECONNECTING)
         val delay = backoffSchedule[reconnectAttempt.coerceAtMost(backoffSchedule.size - 1)]
@@ -189,28 +184,30 @@ class BleService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startBleScan() {
-        val savedMac = prefs.getString("device_mac", null)
-
-        val filters = mutableListOf<ScanFilter>()
-        if (!savedMac.isNullOrBlank()) {
-            filters.add(
-                ScanFilter.Builder()
-                    .setDeviceAddress(savedMac)
-                    .build()
-            )
-        } else {
-            filters.add(
-                ScanFilter.Builder()
-                    .setDeviceName(null)
-                    .build()
-            )
+        val bleScanner = scanner
+        if (bleScanner == null) {
+            android.util.Log.e("BleService", "BLE scanner unavailable — Bluetooth may be off")
+            transitionToReconnecting()
+            return
         }
+
+        stopBleScan()
+
+        val savedMac = prefs.getString("device_mac", null)
+        android.util.Log.i("BleService", "Starting BLE scan (savedMac=$savedMac)")
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        scanner?.startScan(filters, settings, scanCallback)
+        try {
+            bleScanner.startScan(null, settings, scanCallback)
+            android.util.Log.i("BleService", "BLE scan started successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("BleService", "BLE scan failed to start: ${e.message}")
+            transitionToReconnecting()
+            return
+        }
         handler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
     }
 
@@ -224,8 +221,17 @@ class BleService : Service() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            val name = device.name ?: return
-            if (name.startsWith("O2M")) {
+            val name = device.name ?: result.scanRecord?.deviceName ?: return
+            val savedMac = prefs.getString("device_mac", null)
+
+            val nameMatches = name.startsWith("O2") || name.startsWith("Checkme") ||
+                              name.startsWith("Viatom") || name.startsWith("Wellue")
+            val macMatches = !savedMac.isNullOrBlank() && device.address == savedMac
+
+            if (nameMatches || macMatches) {
+                if (savedMac != device.address) {
+                    prefs.edit().putString("device_mac", device.address).apply()
+                }
                 transitionToConnecting(device)
             }
         }
@@ -307,6 +313,13 @@ class BleService : Service() {
                     @Suppress("DEPRECATION")
                     gatt.writeDescriptor(descriptor)
                 }
+                // Fallback: if onDescriptorWrite never fires, proceed after 3s
+                handler.postDelayed({
+                    if (state == BleState.CONNECTING) {
+                        android.util.Log.w("BleService", "CCCD write timeout — proceeding to reading")
+                        transitionToReading()
+                    }
+                }, 3000)
             } else {
                 handler.post { transitionToReading() }
             }
@@ -319,10 +332,8 @@ class BleService : Service() {
         ) {
             if (descriptor.uuid == CCCD_UUID) {
                 handler.post {
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                    if (status == BluetoothGatt.GATT_SUCCESS && state == BleState.CONNECTING) {
                         transitionToReading()
-                    } else {
-                        transitionToReconnecting()
                     }
                 }
             }
@@ -385,8 +396,6 @@ class BleService : Service() {
         val packets = packetParser.feed(data)
         for (packet in packets) {
             session?.feedParsedPacket(packet)
-            // Only parse as live reading when session is NOT busy with commands
-            // (otherwise file data gets misinterpreted as vitals)
             if (!sessionBusy) {
                 val reading = BleProtocol.parseReading(packet.payload) ?: continue
                 handler.post { onReadingReceived(reading) }
@@ -399,23 +408,27 @@ class BleService : Service() {
         lastReadingTimeMs = System.currentTimeMillis()
         readingCount++
 
-        // Reset watchdog
         scheduleStaleWatchdog()
 
-        // After first successful reading, init session and start history downloads
+        // Sync history exactly ONCE after validating connection via first live reading
         if (!sessionInitialized && session != null) {
             sessionInitialized = true
             serviceScope.launch {
                 sessionBusy = true
-                try { session?.setTime(java.time.LocalDateTime.now()) } catch (_: Exception) {}
-                sessionBusy = false
-                handler.post {
-                    handler.postDelayed(historyRunnable, HISTORY_INTERVAL_MS)
+                try {
+                    session?.setTime(java.time.LocalDateTime.now())
+                    downloadNewFiles()
+                } catch (e: Exception) {
+                    android.util.Log.w("BleService", "Init sync failed: ${e.message}")
+                } finally {
+                    sessionBusy = false
+                    handler.post {
+                        if (state == BleState.READING) sendPollCommand()
+                    }
                 }
             }
         }
 
-        // Enqueue and upload in background
         val patientId = prefs.getString("patient_id", null)
         serviceScope.launch {
             if (patientId != null) {
@@ -424,12 +437,10 @@ class BleService : Service() {
             val uploadOk = repository.flushToCloud()
             val queueCount = repository.pendingCount()
 
-            // Prune expired readings every 100 readings
             if (readingCount % 100 == 0) {
                 repository.pruneExpired()
             }
 
-            // Broadcast to UI (on IO thread — LocalBroadcastManager is thread-safe)
             val intent = Intent(ACTION_READING).apply {
                 putExtra(EXTRA_SPO2, reading.spo2)
                 putExtra(EXTRA_HEART_RATE, reading.heartRate)
@@ -441,7 +452,6 @@ class BleService : Service() {
             LocalBroadcastManager.getInstance(this@BleService).sendBroadcast(intent)
         }
 
-        // Update notification
         updateNotification()
     }
 
@@ -451,7 +461,6 @@ class BleService : Service() {
         val s = session ?: return
         val patientId = prefs.getString("patient_id", null) ?: return
 
-        sessionBusy = true
         try {
             val info = s.getInfo() ?: return
             val fileListRaw = info["FileList"] ?: return
@@ -482,8 +491,6 @@ class BleService : Service() {
             }
         } catch (e: Exception) {
             android.util.Log.w("BleService", "History download failed: ${e.message}")
-        } finally {
-            sessionBusy = false
         }
     }
 
@@ -549,7 +556,6 @@ class BleService : Service() {
     private fun cancelAllRunnables() {
         handler.removeCallbacks(scanTimeoutRunnable)
         handler.removeCallbacks(pollRunnable)
-        handler.removeCallbacks(historyRunnable)
         handler.removeCallbacks(staleWatchdogRunnable)
         handler.removeCallbacks(reconnectRunnable)
     }
