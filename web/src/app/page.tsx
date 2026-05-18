@@ -13,7 +13,8 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { fetchPatientStatus, fetchReadings } from "@/lib/api";
+import { fetchPatientStatus, fetchReadings, fetchSummaries } from "@/lib/api";
+import { NightlySummary } from "@/lib/types";
 import { PatientStatus, LatestReading, ReadingRecord } from "@/lib/types";
 import { usePatient } from "@/hooks/usePatient";
 import { useSignalR } from "@/hooks/useSignalR";
@@ -79,6 +80,7 @@ export default function Dashboard() {
   const [historicalReadings, setHistoricalReadings] = useState<ReadingRecord[]>([]);
   const [realtimeReadings, setRealtimeReadings] = useState<LatestReading[]>([]);
   const [chartHours, setChartHours] = useState(1);
+  const [availableNights, setAvailableNights] = useState<NightlySummary[]>([]);
 
   const poll = useCallback(async () => {
     if (!selectedId) return;
@@ -112,6 +114,13 @@ export default function Dashboard() {
       .then((res) => setHistoricalReadings(res.readings))
       .catch(() => {});
   }, [selectedId, chartHours]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    fetchSummaries(selectedId, 90)
+      .then((res) => setAvailableNights(res.summaries))
+      .catch(() => setAvailableNights([]));
+  }, [selectedId]);
 
   const handleNewReading = useCallback((reading: LatestReading) => {
     setStatus((prev) => {
@@ -322,19 +331,29 @@ export default function Dashboard() {
             {/* Chart toolbar */}
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-[#8a96a7] text-xs uppercase tracking-[0.5px] font-medium">Date</span>
-                <input
-                  type="date"
-                  className="bg-[#1a2332] border border-[#2a3a52] text-[#e4e6eb] rounded-md px-3 py-1.5 text-sm focus:border-[#4dabf7] focus:outline-none"
+                <span className="text-[#8a96a7] text-xs uppercase tracking-[0.5px] font-medium">Night</span>
+                <select
+                  className="bg-[#1a2332] border border-[#2a3a52] text-[#e4e6eb] rounded-md px-3 py-1.5 text-sm focus:border-[#4dabf7] focus:outline-none cursor-pointer"
+                  defaultValue=""
                   onChange={(e) => {
-                    if (e.target.value) {
-                      const selectedDate = new Date(e.target.value + "T12:00:00");
+                    if (e.target.value === "") {
+                      setChartHours(1);
+                    } else {
+                      const nightDate = new Date(e.target.value + "T12:00:00");
                       const now = new Date();
-                      const diffHours = Math.max(1, (now.getTime() - selectedDate.getTime()) / (1000 * 60 * 60));
-                      setChartHours(Math.min(diffHours, 168));
+                      const diffHours = Math.max(1, (now.getTime() - nightDate.getTime()) / (1000 * 60 * 60));
+                      setChartHours(Math.min(Math.ceil(diffHours), 168));
                     }
                   }}
-                />
+                >
+                  <option value="">Live (recent)</option>
+                  {availableNights.map((n) => (
+                    <option key={n.nightDate} value={n.nightDate}>
+                      {new Date(n.nightDate + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+                      {" — "}SpO2 avg {n.spo2Avg}% min {n.spo2Min}%
+                    </option>
+                  ))}
+                </select>
               </div>
               <TimeRangeToggle value={chartHours} onChange={setChartHours} />
             </div>
@@ -345,20 +364,16 @@ export default function Dashboard() {
               realtimeReadings={realtimeReadings}
             />
 
-            {/* Scrubber bar */}
+            {/* Data range info */}
             {historicalReadings.length > 0 && (
-              <div className="bg-[#1a2332] border border-[#2a3a52] rounded-lg mt-2 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-[#8a96a7] text-xs font-mono min-w-[130px]">
-                    {new Date(historicalReadings[historicalReadings.length - 1]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                  </span>
-                  <div className="flex-1 h-[14px] bg-[#2a3a52] rounded-full relative">
-                    <div className="absolute top-[2px] bottom-[2px] left-0 right-0 bg-[#4dabf7] rounded-full opacity-30" />
-                  </div>
-                  <span className="text-[#8a96a7] text-xs font-mono min-w-[130px] text-right">
-                    {new Date(historicalReadings[0]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mt-2 px-1 text-xs text-[#8a96a7] font-mono">
+                <span>
+                  {new Date(historicalReadings[historicalReadings.length - 1]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </span>
+                <span>{historicalReadings.length.toLocaleString()} readings</span>
+                <span>
+                  {new Date(historicalReadings[0]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </span>
               </div>
             )}
           </>
