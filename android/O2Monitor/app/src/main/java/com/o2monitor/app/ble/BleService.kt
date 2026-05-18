@@ -698,6 +698,14 @@ class BleService : Service() {
                 TAG,
                 "Latest history reading: SpO2=${reading.spo2} HR=${reading.heartRate}"
             )
+            // Always enqueue the latest reading so cloud has current data
+            val patientId = prefs.getString("patient_id", null)
+            if (patientId != null && result.insertedCount == 0) {
+                serviceScope.launch {
+                    repository.enqueue(patientId, reading)
+                    repository.flushToCloud()
+                }
+            }
             sendReadingBroadcast(reading, queueCount, uploadOk)
         } else if (result.currentBatteryLevel != null && latestReading?.batteryLevel == 0) {
             latestReading = latestReading?.copy(batteryLevel = result.currentBatteryLevel)
