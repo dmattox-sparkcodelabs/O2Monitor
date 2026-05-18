@@ -166,10 +166,14 @@ private fun VitalsChartContent(
 ) {
     val modelProducer = remember { CartesianChartModelProducer() }
 
+    // Normalize HR (40-140) into SpO2 range (80-100) for shared Y-axis
+    // HR 40 -> 80, HR 140 -> 100
+    fun hrToNormalized(hr: Float): Float = 80f + (hr - 40f) * (20f / 100f)
+
     LaunchedEffect(readings) {
         modelProducer.runTransaction {
             lineSeries { series(readings.map { it.spo2.toFloat() }) }
-            lineSeries { series(readings.map { it.heartRate.toFloat() }) }
+            lineSeries { series(readings.map { hrToNormalized(it.heartRate.toFloat()) }) }
         }
     }
 
@@ -184,13 +188,16 @@ private fun VitalsChartContent(
         } ?: " "
     }
 
+    // Both layers share 80-100 range. HR is normalized into this range.
+    val sharedRange = CartesianLayerRangeProvider.fixed(minY = 80.0, maxY = 100.0)
+
     val spo2Layer = rememberLineCartesianLayer(
         lineProvider = LineCartesianLayer.LineProvider.series(
             LineCartesianLayer.rememberLine(
                 fill = LineCartesianLayer.LineFill.single(fill(SPO2_COLOR))
             )
         ),
-        rangeProvider = CartesianLayerRangeProvider.fixed(minY = 80.0, maxY = 100.0)
+        rangeProvider = sharedRange
     )
 
     val hrLayer = rememberLineCartesianLayer(
@@ -199,11 +206,16 @@ private fun VitalsChartContent(
                 fill = LineCartesianLayer.LineFill.single(fill(HR_COLOR))
             )
         ),
-        rangeProvider = CartesianLayerRangeProvider.fixed(minY = 40.0, maxY = 140.0)
+        rangeProvider = sharedRange
     )
 
+    // Left axis: SpO2 80-100%
     val spo2Formatter = CartesianValueFormatter { _, y, _ -> "${y.toInt()}%" }
-    val hrFormatter = CartesianValueFormatter { _, y, _ -> "${y.toInt()}" }
+    // Right axis: convert normalized back to real HR (80->40, 100->140)
+    val hrFormatter = CartesianValueFormatter { _, y, _ ->
+        val realHr = 40.0 + (y - 80.0) * (100.0 / 20.0)
+        "${realHr.toInt()}"
+    }
 
     CartesianChartHost(
         chart = rememberCartesianChart(
