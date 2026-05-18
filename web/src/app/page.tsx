@@ -362,20 +362,11 @@ export default function Dashboard() {
             <LiveChart
               readings={historicalReadings}
               realtimeReadings={realtimeReadings}
+              windowHours={chartHours}
             />
 
-            {/* Data range info */}
-            {historicalReadings.length > 0 && (
-              <div className="flex items-center justify-between mt-2 px-1 text-xs text-[#8a96a7] font-mono">
-                <span>
-                  {new Date(historicalReadings[historicalReadings.length - 1]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </span>
-                <span>{historicalReadings.length.toLocaleString()} readings</span>
-                <span>
-                  {new Date(historicalReadings[0]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </span>
-              </div>
-            )}
+
+
           </>
         )}
 
