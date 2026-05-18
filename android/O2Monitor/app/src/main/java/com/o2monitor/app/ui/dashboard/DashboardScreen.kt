@@ -93,6 +93,16 @@ fun DashboardScreen(
     var bleState by remember { mutableStateOf(BleState.IDLE) }
     var oxiState by remember { mutableStateOf(OxiDisplayState()) }
 
+    // Auto-start monitoring when dashboard loads
+    androidx.compose.runtime.LaunchedEffect(permissionsGranted, patientId) {
+        if (permissionsGranted && patientId.isNotBlank() && !isRunning) {
+            val startIntent = Intent(context, BleService::class.java)
+            context.startForegroundService(startIntent)
+            isRunning = true
+            bleState = BleState.SCANNING
+        }
+    }
+
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     var isBatteryOptimized by remember {
         mutableStateOf(!powerManager.isIgnoringBatteryOptimizations(context.packageName))
@@ -307,46 +317,10 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(32.dp))
             }
 
-            // Start / Stop button
-            Button(
-                enabled = permissionsGranted || isRunning,
-                onClick = {
-                    if (isRunning) {
-                        val stopIntent = Intent(context, BleService::class.java).apply {
-                            action = BleService.ACTION_STOP
-                        }
-                        context.startService(stopIntent)
-                        isRunning = false
-                        bleState = BleState.IDLE
-                        oxiState = OxiDisplayState()
-                    } else {
-                        val startIntent = Intent(context, BleService::class.java)
-                        context.startForegroundService(startIntent)
-                        isRunning = true
-                        bleState = BleState.SCANNING
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = when {
-                        !permissionsGranted && !isRunning -> "Permissions required"
-                        isRunning -> "Stop Monitoring"
-                        else -> "Start Monitoring"
-                    },
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-
+            // Retry button when scanning/reconnecting
             if (isRunning && bleState != BleState.READING) {
-                Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        // Restart service to reset backoff and retry immediately
                         val stopIntent = Intent(context, BleService::class.java).apply {
                             action = BleService.ACTION_STOP
                         }
@@ -362,6 +336,43 @@ fun DashboardScreen(
                 ) {
                     Text("⟳  Retry Connection", style = MaterialTheme.typography.labelLarge)
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Not monitoring warning
+            if (!isRunning && patientId.isNotBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF7F1D1D)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "⚠ Monitoring is stopped",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val startIntent = Intent(context, BleService::class.java)
+                                context.startForegroundService(startIntent)
+                                isRunning = true
+                                bleState = BleState.SCANNING
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text("Resume Monitoring")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (isBatteryOptimized) {

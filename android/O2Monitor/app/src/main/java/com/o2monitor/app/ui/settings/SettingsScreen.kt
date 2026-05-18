@@ -459,6 +459,27 @@ fun SettingsScreen(
                 }
             }
 
+            // ---- Monitoring Control ----
+            SectionCard(title = "Monitoring") {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                Button(
+                    onClick = {
+                        val stopIntent = android.content.Intent(context, com.o2monitor.app.ble.BleService::class.java).apply {
+                            action = com.o2monitor.app.ble.BleService.ACTION_STOP
+                        }
+                        context.startService(stopIntent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Stop Monitoring")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // ---- App Info ----
             SectionCard(title = "App Info") {
                 Text(
