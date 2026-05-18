@@ -166,9 +166,15 @@ private fun VitalsChartContent(
 ) {
     val modelProducer = remember { CartesianChartModelProducer() }
 
-    // Normalize HR (40-140) into SpO2 range (80-100) for shared Y-axis
-    // HR 40 -> 80, HR 140 -> 100
-    fun hrToNormalized(hr: Float): Float = 80f + (hr - 40f) * (20f / 100f)
+    // Dynamic Y-axis floor: normally 80, drops lower if SpO2 data goes below 80
+    val yMin = remember(readings) {
+        if (readings.isEmpty()) 80.0
+        else minOf(80.0, (readings.minOf { it.spo2 } - 2.0).coerceAtLeast(50.0))
+    }
+    val yRange = 100.0 - yMin
+
+    // Normalize HR (40-140) into SpO2 range (yMin-100) for shared Y-axis
+    fun hrToNormalized(hr: Float): Float = (yMin + (hr - 40f) * (yRange / 100.0)).toFloat()
 
     LaunchedEffect(readings) {
         modelProducer.runTransaction {
@@ -188,8 +194,7 @@ private fun VitalsChartContent(
         } ?: " "
     }
 
-    // Both layers share 80-100 range. HR is normalized into this range.
-    val sharedRange = CartesianLayerRangeProvider.fixed(minY = 80.0, maxY = 100.0)
+    val sharedRange = CartesianLayerRangeProvider.fixed(minY = yMin, maxY = 100.0)
 
     val spo2Layer = rememberLineCartesianLayer(
         lineProvider = LineCartesianLayer.LineProvider.series(
@@ -211,9 +216,9 @@ private fun VitalsChartContent(
 
     // Left axis: SpO2 80-100%
     val spo2Formatter = CartesianValueFormatter { _, y, _ -> "${y.toInt()}%" }
-    // Right axis: convert normalized back to real HR (80->40, 100->140)
+    // Right axis: convert normalized back to real HR
     val hrFormatter = CartesianValueFormatter { _, y, _ ->
-        val realHr = 40.0 + (y - 80.0) * (100.0 / 20.0)
+        val realHr = 40.0 + (y - yMin) * (100.0 / yRange)
         "${realHr.toInt()}"
     }
 
