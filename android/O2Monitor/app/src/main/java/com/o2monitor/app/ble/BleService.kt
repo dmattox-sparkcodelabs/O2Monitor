@@ -59,7 +59,7 @@ class BleService : Service() {
         const val EXTRA_STATE = "state"
         const val ACTION_STOP = "com.o2monitor.STOP"
 
-        private const val NOTIFICATION_CHANNEL_ID = "o2monitor_ble"
+        private const val NOTIFICATION_CHANNEL_ID = "o2monitor_ble_v2"
         private const val NOTIFICATION_ID = 1001
         private const val SCAN_TIMEOUT_MS = 30_000L
         private const val HISTORY_SYNC_INTERVAL_MS = 60_000L
@@ -786,7 +786,7 @@ class BleService : Service() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             "O2 Monitor",
-            NotificationManager.IMPORTANCE_HIGH
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "Live SpO2 and heart rate monitoring"
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
