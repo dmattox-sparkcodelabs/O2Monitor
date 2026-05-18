@@ -79,7 +79,8 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [historicalReadings, setHistoricalReadings] = useState<ReadingRecord[]>([]);
   const [realtimeReadings, setRealtimeReadings] = useState<LatestReading[]>([]);
-  const [chartHours, setChartHours] = useState(1);
+  const [zoomHours, setZoomHours] = useState(1);
+  const [dataRangeHours, setDataRangeHours] = useState(24);
   const [availableNights, setAvailableNights] = useState<NightlySummary[]>([]);
 
   const poll = useCallback(async () => {
@@ -110,10 +111,10 @@ export default function Dashboard() {
     if (!selectedId) return;
     setHistoricalReadings([]);
     setRealtimeReadings([]);
-    fetchReadings(selectedId, chartHours)
+    fetchReadings(selectedId, dataRangeHours)
       .then((res) => setHistoricalReadings(res.readings))
       .catch(() => {});
-  }, [selectedId, chartHours]);
+  }, [selectedId, dataRangeHours]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -337,12 +338,12 @@ export default function Dashboard() {
                   defaultValue=""
                   onChange={(e) => {
                     if (e.target.value === "") {
-                      setChartHours(1);
+                      setDataRangeHours(24);
                     } else {
                       const nightDate = new Date(e.target.value + "T12:00:00");
                       const now = new Date();
                       const diffHours = Math.max(1, (now.getTime() - nightDate.getTime()) / (1000 * 60 * 60));
-                      setChartHours(Math.min(Math.ceil(diffHours), 168));
+                      setDataRangeHours(Math.min(Math.ceil(diffHours), 168));
                     }
                   }}
                 >
@@ -355,14 +356,14 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
-              <TimeRangeToggle value={chartHours} onChange={setChartHours} />
+              <TimeRangeToggle value={zoomHours} onChange={setZoomHours} />
             </div>
 
             {/* Chart */}
             <LiveChart
               readings={historicalReadings}
               realtimeReadings={realtimeReadings}
-              windowHours={chartHours}
+              windowHours={zoomHours}
             />
 
 
