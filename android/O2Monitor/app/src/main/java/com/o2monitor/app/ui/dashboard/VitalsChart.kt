@@ -202,12 +202,15 @@ private fun VitalsChartContent(
         rangeProvider = CartesianLayerRangeProvider.fixed(minY = 40.0, maxY = 140.0)
     )
 
+    val spo2Formatter = CartesianValueFormatter { _, y, _ -> "${y.toInt()}%" }
+    val hrFormatter = CartesianValueFormatter { _, y, _ -> "${y.toInt()}" }
+
     CartesianChartHost(
         chart = rememberCartesianChart(
             spo2Layer,
             hrLayer,
-            startAxis = VerticalAxis.rememberStart(),
-            endAxis = VerticalAxis.rememberEnd(),
+            startAxis = VerticalAxis.rememberStart(valueFormatter = spo2Formatter),
+            endAxis = VerticalAxis.rememberEnd(valueFormatter = hrFormatter),
             bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = xValueFormatter)
         ),
         modelProducer = modelProducer,
