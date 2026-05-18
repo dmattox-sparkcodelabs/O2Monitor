@@ -87,9 +87,8 @@ fun VitalsChart(
         val result = apiClient.getReadings(patientId, selectedHours)
         result.onSuccess { response ->
             readings = response.readings
-        }.onFailure { ex ->
-            errorMessage = ex.message ?: "Failed to load readings"
-            readings = emptyList()
+        }.onFailure { _ ->
+            errorMessage = "Unable to load chart data"
         }
         isLoading = false
     }
