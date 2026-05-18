@@ -148,18 +148,21 @@ fun DashboardScreen(
         }
     }
 
-    // Poll countdown animation
-    var pollProgress by remember { mutableStateOf(0f) }
+    // Poll countdown animation — smooth using Animatable
+    val pollProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     androidx.compose.runtime.LaunchedEffect(oxiState.lastReadingTime) {
         if (oxiState.lastReadingTime > 0) {
-            pollProgress = 0f
-            val startTime = oxiState.lastReadingTime
-            while (true) {
-                val elapsed = System.currentTimeMillis() - startTime
-                pollProgress = (elapsed / 60_000f).coerceIn(0f, 1f)
-                if (pollProgress >= 1f) break
-                kotlinx.coroutines.delay(500)
-            }
+            val elapsed = (System.currentTimeMillis() - oxiState.lastReadingTime).coerceAtLeast(0)
+            val startFraction = (elapsed / 60_000f).coerceIn(0f, 1f)
+            val remainingMs = ((1f - startFraction) * 60_000f).toLong().coerceAtLeast(0)
+            pollProgress.snapTo(startFraction)
+            pollProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = remainingMs.toInt(),
+                    easing = androidx.compose.animation.core.LinearEasing
+                )
+            )
         }
     }
 
@@ -415,19 +418,20 @@ fun DashboardScreen(
 
         }
 
-            // Poll countdown bar at bottom
-            if (isRunning && oxiState.lastReadingTime > 0) {
+            // Poll countdown bar above system nav
+            if (isRunning) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .height(4.dp)
-                        .background(Color(0xFF1F2937))
+                        .padding(bottom = 48.dp)
+                        .height(8.dp)
+                        .background(Color(0xFF374151))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .fillMaxWidth(pollProgress)
+                            .fillMaxWidth(if (pollProgress.value > 0f) pollProgress.value else 0.02f)
                             .background(Color(0xFF22C55E))
                     )
                 }
