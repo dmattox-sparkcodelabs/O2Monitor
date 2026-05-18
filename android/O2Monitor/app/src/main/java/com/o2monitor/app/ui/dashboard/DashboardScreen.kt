@@ -199,10 +199,12 @@ fun DashboardScreen(
             val uploadStatus = oxiState.uploadOk
             if (uploadStatus != null) {
                 Spacer(modifier = Modifier.height(4.dp))
-                val (uploadLabel, uploadColor) = if (uploadStatus) {
-                    "Uploading" to Color(0xFF4CAF50)
-                } else {
-                    "Offline (${oxiState.queueCount} queued)" to Color(0xFFFF9800)
+                val queueCount = oxiState.queueCount
+                val (uploadLabel, uploadColor) = when {
+                    uploadStatus && queueCount == 0 -> "✓ Synced" to Color(0xFF4CAF50)
+                    uploadStatus && queueCount > 0 -> "Uploading… $queueCount remaining" to Color(0xFF4CAF50)
+                    !uploadStatus && queueCount > 0 -> "Offline — $queueCount queued" to Color(0xFFFF9800)
+                    else -> "Offline" to Color(0xFFFF9800)
                 }
                 Text(
                     text = uploadLabel,
