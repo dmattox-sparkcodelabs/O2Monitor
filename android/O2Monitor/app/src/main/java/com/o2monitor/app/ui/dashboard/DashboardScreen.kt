@@ -68,7 +68,8 @@ private data class OxiDisplayState(
     val batteryLevel: Int? = null,
     val movement: Int? = null,
     val uploadOk: Boolean? = null,
-    val queueCount: Int = 0
+    val queueCount: Int = 0,
+    val lastReadingTime: Long = 0L
 )
 
 private fun spo2Color(spo2: Int): Color = when {
@@ -120,7 +121,8 @@ fun DashboardScreen(
                             batteryLevel = intent.getIntExtra(BleService.EXTRA_BATTERY_LEVEL, 0),
                             movement = intent.getIntExtra(BleService.EXTRA_MOVEMENT, 0),
                             uploadOk = intent.getBooleanExtra(BleService.EXTRA_UPLOAD_OK, false),
-                            queueCount = intent.getIntExtra(BleService.EXTRA_QUEUE_COUNT, 0)
+                            queueCount = intent.getIntExtra(BleService.EXTRA_QUEUE_COUNT, 0),
+                            lastReadingTime = System.currentTimeMillis()
                         )
                         isRunning = true
                         bleState = BleState.READING
@@ -210,6 +212,20 @@ fun DashboardScreen(
                     text = uploadLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = uploadColor
+                )
+            }
+
+            // Last reading timestamp
+            if (oxiState.lastReadingTime > 0) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val timeAgo = remember(oxiState.lastReadingTime) {
+                    val fmt = java.text.SimpleDateFormat("h:mm:ss a", java.util.Locale.getDefault())
+                    "Last reading: ${fmt.format(java.util.Date(oxiState.lastReadingTime))}"
+                }
+                Text(
+                    text = timeAgo,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                 )
             }
 
