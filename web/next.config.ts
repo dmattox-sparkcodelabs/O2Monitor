@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["o2monitor.local.sparkcodelabs.com"],
   async rewrites() {
     return [
       {
