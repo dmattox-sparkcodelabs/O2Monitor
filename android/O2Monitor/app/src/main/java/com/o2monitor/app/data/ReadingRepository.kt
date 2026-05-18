@@ -49,33 +49,38 @@ class ReadingRepository(
         val apiKey = prefs.getString("api_key", null) ?: return false
         val client = ApiClient(httpClient, baseUrl, apiKey)
 
-        val readings = dao.peek(50)
-        if (readings.isEmpty()) return true
+        var totalFlushed = 0
+        while (true) {
+            val readings = dao.peek(200)
+            if (readings.isEmpty()) break
 
-        val payloads = readings.map { reading ->
-            ReadingPayload(
-                patientId = reading.patientId,
-                spo2 = reading.spo2,
-                heartRate = reading.heartRate,
-                batteryLevel = reading.batteryLevel,
-                movement = reading.movement,
-                timestamp = reading.timestamp,
-                source = reading.source,
-                deviceId = reading.deviceId
-            )
-        }
+            val payloads = readings.map { reading ->
+                ReadingPayload(
+                    patientId = reading.patientId,
+                    spo2 = reading.spo2,
+                    heartRate = reading.heartRate,
+                    batteryLevel = reading.batteryLevel,
+                    movement = reading.movement,
+                    timestamp = reading.timestamp,
+                    source = reading.source,
+                    deviceId = reading.deviceId
+                )
+            }
 
-        val result = if (readings.size == 1) {
-            client.postReading(payloads[0]).map { Unit }
-        } else {
-            client.postBatch(payloads).map { Unit }
-        }
+            val result = if (readings.size == 1) {
+                client.postReading(payloads[0]).map { Unit }
+            } else {
+                client.postBatch(payloads).map { Unit }
+            }
 
-        if (result.isSuccess) {
-            dao.deleteByIds(readings.map { it.id })
-            return true
+            if (result.isSuccess) {
+                dao.deleteByIds(readings.map { it.id })
+                totalFlushed += readings.size
+            } else {
+                return totalFlushed > 0
+            }
         }
-        return false
+        return true
     }
 
     suspend fun pendingCount(): Int = dao.count()
