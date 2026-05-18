@@ -156,7 +156,7 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
         <ResponsiveContainer width="100%" height={480}>
           <ComposedChart data={visibleData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(138, 150, 167, 0.1)" />
-            <ReferenceArea y1={70} y2={88} yAxisId="spo2" fill="#ff6b6b" fillOpacity={0.06} />
+            <ReferenceArea y1={80} y2={88} yAxisId="spo2" fill="#ff6b6b" fillOpacity={0.06} />
             <ReferenceArea y1={88} y2={90} yAxisId="spo2" fill="#ffd43b" fillOpacity={0.06} />
             <XAxis
               dataKey="time"
@@ -167,7 +167,7 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
             />
             <YAxis
               yAxisId="spo2"
-              domain={[70, 100]}
+              domain={[80, 100]}
               stroke="#2a3a52"
               tick={{ fill: "#4dabf7", fontSize: 11 }}
               label={{ value: "SpO2 (%)", angle: -90, position: "insideLeft", fill: "#4dabf7", fontSize: 11, dx: -4 }}
