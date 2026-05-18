@@ -8,11 +8,13 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -146,10 +148,26 @@ fun DashboardScreen(
         }
     }
 
+    // Poll countdown animation
+    var pollProgress by remember { mutableStateOf(0f) }
+    androidx.compose.runtime.LaunchedEffect(oxiState.lastReadingTime) {
+        if (oxiState.lastReadingTime > 0) {
+            pollProgress = 0f
+            val startTime = oxiState.lastReadingTime
+            while (true) {
+                val elapsed = System.currentTimeMillis() - startTime
+                pollProgress = (elapsed / 60_000f).coerceIn(0f, 1f)
+                if (pollProgress >= 1f) break
+                kotlinx.coroutines.delay(500)
+            }
+        }
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -395,6 +413,25 @@ fun DashboardScreen(
 
 
 
+        }
+
+            // Poll countdown bar at bottom
+            if (isRunning && oxiState.lastReadingTime > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color(0xFF1F2937))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(pollProgress)
+                            .background(Color(0xFF22C55E))
+                    )
+                }
+            }
         }
     }
 }
