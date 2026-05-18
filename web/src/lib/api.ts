@@ -1,6 +1,6 @@
 import { PatientStatus, PatientSummary, ReadingsResponse, AlertsResponse, SummariesResponse } from "./types";
 
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
+const API_KEY = "test-dev-key";
 
 function authHeaders(): Record<string, string> {
   if (!API_KEY) return {};
