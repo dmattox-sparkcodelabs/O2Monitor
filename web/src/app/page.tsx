@@ -203,7 +203,7 @@ export default function Dashboard() {
     <main className="flex-1 bg-[#0f1419] text-[#e4e6eb]">
       {/* Header */}
       <header className="border-b border-[#2a3a52] px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div>
               <h1 className="text-xl font-semibold text-[#e4e6eb]">O2 Monitor</h1>
@@ -236,13 +236,13 @@ export default function Dashboard() {
       </header>
 
       {/* Disclaimer bar */}
-      <div className="max-w-6xl mx-auto px-6 mt-4">
+      <div className="w-full px-6 mt-4">
         <div className="bg-[#2a1a1a] border-l-[3px] border-l-[#ff6b6b] px-3 py-2 text-xs text-[#ffa8a8]">
           Not a medical device. Data here is for personal awareness only and is not a substitute for clinical evaluation.
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="w-full px-6 py-6">
         {/* Alert banners */}
         {status && status.activeAlerts.length > 0 && (
           <AlertBanner alerts={status.activeAlerts} />
@@ -319,8 +319,23 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Zoom toolbar */}
-            <div className="flex justify-end mb-3">
+            {/* Chart toolbar */}
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[#8a96a7] text-xs uppercase tracking-[0.5px] font-medium">Date</span>
+                <input
+                  type="date"
+                  className="bg-[#1a2332] border border-[#2a3a52] text-[#e4e6eb] rounded-md px-3 py-1.5 text-sm focus:border-[#4dabf7] focus:outline-none"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const selectedDate = new Date(e.target.value + "T12:00:00");
+                      const now = new Date();
+                      const diffHours = Math.max(1, (now.getTime() - selectedDate.getTime()) / (1000 * 60 * 60));
+                      setChartHours(Math.min(diffHours, 168));
+                    }
+                  }}
+                />
+              </div>
               <TimeRangeToggle value={chartHours} onChange={setChartHours} />
             </div>
 
@@ -329,6 +344,23 @@ export default function Dashboard() {
               readings={historicalReadings}
               realtimeReadings={realtimeReadings}
             />
+
+            {/* Scrubber bar */}
+            {historicalReadings.length > 0 && (
+              <div className="bg-[#1a2332] border border-[#2a3a52] rounded-lg mt-2 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-[#8a96a7] text-xs font-mono min-w-[130px]">
+                    {new Date(historicalReadings[historicalReadings.length - 1]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </span>
+                  <div className="flex-1 h-[14px] bg-[#2a3a52] rounded-full relative">
+                    <div className="absolute top-[2px] bottom-[2px] left-0 right-0 bg-[#4dabf7] rounded-full opacity-30" />
+                  </div>
+                  <span className="text-[#8a96a7] text-xs font-mono min-w-[130px] text-right">
+                    {new Date(historicalReadings[0]?.timestamp || "").toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         )}
 
