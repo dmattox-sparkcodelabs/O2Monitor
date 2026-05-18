@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberEnd
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
@@ -208,6 +209,7 @@ private fun VitalsChartContent(
             spo2Layer,
             hrLayer,
             startAxis = VerticalAxis.rememberStart(),
+            endAxis = VerticalAxis.rememberEnd(),
             bottomAxis = HorizontalAxis.rememberBottom(valueFormatter = xValueFormatter)
         ),
         modelProducer = modelProducer,
