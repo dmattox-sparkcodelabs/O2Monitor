@@ -122,6 +122,9 @@ class BleService : Service() {
         if (state == BleState.IDLE) {
             transitionToScanning()
         }
+        // Re-broadcast current state so dashboard picks it up when it (re)attaches
+        broadcastState(state)
+        latestReading?.let { sendReadingBroadcast(it, 0, true) }
         return START_STICKY
     }
 
