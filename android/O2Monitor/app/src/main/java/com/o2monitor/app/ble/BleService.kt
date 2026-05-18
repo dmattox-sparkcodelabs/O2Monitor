@@ -471,7 +471,8 @@ class BleService : Service() {
 
     private fun handleNotificationData(data: ByteArray) {
         val packets = packetParser.feed(data)
-        android.util.Log.d(TAG, "RX ${data.size} bytes: ${data.toHexString()}; completePackets=${packets.size}")
+
+
         for (packet in packets) {
             session?.feedParsedPacket(packet)
             if (packet.status != 0) {
