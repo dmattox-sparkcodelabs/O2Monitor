@@ -168,10 +168,8 @@ private fun VitalsChartContent(
 
     LaunchedEffect(readings) {
         modelProducer.runTransaction {
-            lineSeries {
-                series(readings.map { it.spo2.toFloat() })
-                series(readings.map { it.heartRate.toFloat() })
-            }
+            lineSeries { series(readings.map { it.spo2.toFloat() }) }
+            lineSeries { series(readings.map { it.heartRate.toFloat() }) }
         }
     }
 
