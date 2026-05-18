@@ -515,6 +515,30 @@ fun SettingsScreen(
                         Text("Start Monitoring")
                     }
                 }
+
+                val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+                var isBatteryOptimized by remember {
+                    mutableStateOf(!powerManager.isIgnoringBatteryOptimizations(context.packageName))
+                }
+                if (isBatteryOptimized) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                android.net.Uri.parse("package:${context.packageName}")
+                            )
+                            context.startActivity(intent)
+                            isBatteryOptimized = !powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("Disable Battery Optimization")
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

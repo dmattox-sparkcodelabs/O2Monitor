@@ -375,28 +375,8 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            if (isBatteryOptimized) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        val intent = Intent(
-                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                        isBatteryOptimized = !powerManager.isIgnoringBatteryOptimizations(context.packageName)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Disable Battery Optimization",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            }
+
+
         }
     }
 }
