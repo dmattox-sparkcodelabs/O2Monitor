@@ -42,6 +42,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -462,19 +463,57 @@ fun SettingsScreen(
             // ---- Monitoring Control ----
             SectionCard(title = "Monitoring") {
                 val context = androidx.compose.ui.platform.LocalContext.current
-                Button(
-                    onClick = {
-                        val stopIntent = android.content.Intent(context, com.o2monitor.app.ble.BleService::class.java).apply {
-                            action = com.o2monitor.app.ble.BleService.ACTION_STOP
+                var isMonitoring by remember { mutableStateOf(true) }
+
+                // Listen for state broadcasts to track service status
+                DisposableEffect(Unit) {
+                    val receiver = object : android.content.BroadcastReceiver() {
+                        override fun onReceive(ctx: android.content.Context, intent: android.content.Intent) {
+                            val nextState = intent.getStringExtra(com.o2monitor.app.ble.BleService.EXTRA_STATE)
+                                ?.let { runCatching { com.o2monitor.app.ble.BleState.valueOf(it) }.getOrNull() }
+                                ?: return
+                            isMonitoring = nextState != com.o2monitor.app.ble.BleState.IDLE
                         }
-                        context.startService(stopIntent)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Stop Monitoring")
+                    }
+                    val filter = android.content.IntentFilter(com.o2monitor.app.ble.BleService.ACTION_STATE)
+                    androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context)
+                        .registerReceiver(receiver, filter)
+                    onDispose {
+                        androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context)
+                            .unregisterReceiver(receiver)
+                    }
+                }
+
+                if (isMonitoring) {
+                    Button(
+                        onClick = {
+                            val stopIntent = android.content.Intent(context, com.o2monitor.app.ble.BleService::class.java).apply {
+                                action = com.o2monitor.app.ble.BleService.ACTION_STOP
+                            }
+                            context.startService(stopIntent)
+                            isMonitoring = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Stop Monitoring")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            val startIntent = android.content.Intent(context, com.o2monitor.app.ble.BleService::class.java)
+                            context.startForegroundService(startIntent)
+                            isMonitoring = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("Start Monitoring")
+                    }
                 }
             }
 
