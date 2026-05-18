@@ -1,12 +1,17 @@
 "use client";
 
+/**
+ * ConnectionStatus — Compact inline status matching Windows viewer style.
+ * Green/red dot + label + time-since-reading.
+ */
+
 interface ConnectionStatusProps {
   online: boolean;
   secondsSinceReading: number | null;
 }
 
 export default function ConnectionStatus({ online, secondsSinceReading }: ConnectionStatusProps) {
-  const dotColor = online ? "bg-green-400" : "bg-red-500";
+  const dotColor = online ? "bg-[#51cf66]" : "bg-[#ff6b6b]";
   const label = online ? "Online" : "Offline";
   const ageText = secondsSinceReading !== null
     ? secondsSinceReading < 60
@@ -15,10 +20,10 @@ export default function ConnectionStatus({ online, secondsSinceReading }: Connec
     : "No data";
 
   return (
-    <div className="flex items-center gap-3 text-sm text-gray-300">
-      <span className={`${dotColor} w-3 h-3 rounded-full ${online ? "animate-pulse" : ""}`} />
-      <span className="font-medium">{label}</span>
-      <span className="opacity-60">{ageText}</span>
+    <div className="flex items-center gap-2.5 text-sm">
+      <span className={`${dotColor} w-2.5 h-2.5 rounded-full ${online ? "animate-pulse" : ""}`} />
+      <span className="font-medium text-[#e4e6eb]">{label}</span>
+      <span className="text-[#8a96a7]">{ageText}</span>
     </div>
   );
 }

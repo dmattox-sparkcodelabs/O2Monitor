@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * AlertBanner — Warning bars with red/orange/yellow left border accent.
+ * Matches the Windows viewer disclaimer bar style.
+ */
+
 interface AlertSummary {
   id: string;
   alertType: string;
@@ -12,12 +17,21 @@ interface AlertBannerProps {
   alerts: AlertSummary[];
 }
 
-function severityColor(severity: string): string {
+function severityStyles(severity: string): string {
   switch (severity) {
-    case "critical": return "bg-red-700 border-red-500";
-    case "high": return "bg-orange-700 border-orange-500";
-    case "warning": return "bg-yellow-700 border-yellow-500";
-    default: return "bg-blue-700 border-blue-500";
+    case "critical": return "bg-[#2a1a1a] border-l-[#ff6b6b]";
+    case "high": return "bg-[#2a2218] border-l-[#ffa94d]";
+    case "warning": return "bg-[#2a2818] border-l-[#ffd43b]";
+    default: return "bg-[#1a2332] border-l-[#4dabf7]";
+  }
+}
+
+function severityTextColor(severity: string): string {
+  switch (severity) {
+    case "critical": return "text-[#ffa8a8]";
+    case "high": return "text-[#ffd8a8]";
+    case "warning": return "text-[#ffe066]";
+    default: return "text-[#a5d8ff]";
   }
 }
 
@@ -37,15 +51,17 @@ export default function AlertBanner({ alerts }: AlertBannerProps) {
       {alerts.map((alert) => (
         <div
           key={alert.id}
-          className={`${severityColor(alert.severity)} border rounded-lg px-4 py-3 text-white flex items-center justify-between`}
+          className={`${severityStyles(alert.severity)} border-l-[3px] border border-[#2a3a52] rounded-lg px-4 py-3 flex items-center justify-between`}
         >
           <div className="flex items-center gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider opacity-80">
+            <span className={`text-[11px] font-bold uppercase tracking-wider ${severityTextColor(alert.severity)}`}>
               {severityLabel(alert.severity)}
             </span>
-            <span className="font-medium">{alert.message}</span>
+            <span className={`font-medium text-sm ${severityTextColor(alert.severity)}`}>
+              {alert.message}
+            </span>
           </div>
-          <span className="text-xs opacity-70">{formatTime(alert.timestamp)}</span>
+          <span className="text-xs text-[#8a96a7]">{formatTime(alert.timestamp)}</span>
         </div>
       ))}
     </div>

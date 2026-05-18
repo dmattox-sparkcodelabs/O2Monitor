@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Nav — Desktop inline links + mobile bottom bar.
+ * Styled to match the Windows viewer dark palette.
+ */
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -20,8 +25,10 @@ export default function Nav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`text-sm font-medium transition-colors ${
-              pathname === link.href ? "text-white" : "text-gray-400 hover:text-gray-200"
+            className={`text-sm font-medium transition-colors duration-200 ${
+              pathname === link.href
+                ? "text-[#4dabf7]"
+                : "text-[#8a96a7] hover:text-[#e4e6eb]"
             }`}
           >
             {link.label}
@@ -29,15 +36,15 @@ export default function Nav() {
         ))}
       </nav>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex justify-around py-2 px-1 z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0f1419] border-t border-[#2a3a52] flex justify-around py-2 px-1 z-50">
         {links.map((link) => (
           <Link
             key={link.href}
             href={link.href}
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors min-w-[60px] ${
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors duration-200 min-w-[60px] ${
               pathname === link.href
-                ? "text-white bg-gray-800"
-                : "text-gray-500"
+                ? "text-[#4dabf7] bg-[#1a2332]"
+                : "text-[#8a96a7]"
             }`}
           >
             <span className="text-lg">{link.icon}</span>

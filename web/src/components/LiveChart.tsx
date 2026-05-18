@@ -1,16 +1,23 @@
 "use client";
 
+/**
+ * LiveChart — Taller dual-axis chart matching Windows baseline viewer.
+ * SpO2 on left axis (green line), HR on right axis (blue line).
+ * 480px tall with threshold reference zones.
+ * Background: #1a2332 card, #2a3a52 border.
+ */
+
 import { useMemo } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
   Line,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ReferenceArea,
+  Legend,
 } from "recharts";
 import { ReadingRecord, LatestReading } from "@/lib/types";
 
@@ -28,7 +35,9 @@ interface ChartPoint {
 
 function formatTime(ts: string): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  return `${h}:${m}`;
 }
 
 export default function LiveChart({ readings, realtimeReadings }: LiveChartProps) {
@@ -58,67 +67,81 @@ export default function LiveChart({ readings, realtimeReadings }: LiveChartProps
 
   if (data.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 text-center text-gray-500 h-[300px] flex items-center justify-center">
+      <div className="bg-[#1a2332] border border-[#2a3a52] rounded-lg p-6 text-center text-[#8a96a7] h-[480px] flex items-center justify-center">
         No readings to display
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4 mt-6">
-      <ResponsiveContainer width="100%" height={300}>
+    <div className="bg-[#1a2332] border border-[#2a3a52] rounded-lg p-4">
+      <ResponsiveContainer width="100%" height={480}>
         <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(138, 150, 167, 0.1)" />
 
-          <ReferenceArea y1={0} y2={90} yAxisId="spo2" fill="#dc2626" fillOpacity={0.08} />
-          <ReferenceArea y1={90} y2={92} yAxisId="spo2" fill="#eab308" fillOpacity={0.08} />
+          {/* Threshold zones */}
+          <ReferenceArea y1={70} y2={88} yAxisId="spo2" fill="#ff6b6b" fillOpacity={0.06} />
+          <ReferenceArea y1={88} y2={90} yAxisId="spo2" fill="#ffd43b" fillOpacity={0.06} />
 
           <XAxis
             dataKey="time"
-            stroke="#6b7280"
-            tick={{ fill: "#9ca3af", fontSize: 11 }}
+            stroke="#2a3a52"
+            tick={{ fill: "#8a96a7", fontSize: 11 }}
             interval="preserveStartEnd"
             minTickGap={60}
           />
           <YAxis
             yAxisId="spo2"
-            domain={[80, 100]}
-            stroke="#6b7280"
-            tick={{ fill: "#9ca3af", fontSize: 11 }}
-            label={{ value: "SpO2 %", angle: -90, position: "insideLeft", fill: "#9ca3af", fontSize: 11 }}
+            domain={[70, 100]}
+            stroke="#2a3a52"
+            tick={{ fill: "#4dabf7", fontSize: 11 }}
+            label={{ value: "SpO2 (%)", angle: -90, position: "insideLeft", fill: "#4dabf7", fontSize: 11, dx: -4 }}
+            tickFormatter={(v: number) => `${v}%`}
           />
           <YAxis
             yAxisId="hr"
             orientation="right"
             domain={[40, 140]}
-            stroke="#6b7280"
-            tick={{ fill: "#9ca3af", fontSize: 11 }}
-            label={{ value: "HR bpm", angle: 90, position: "insideRight", fill: "#9ca3af", fontSize: 11 }}
+            stroke="#2a3a52"
+            tick={{ fill: "#ff6b6b", fontSize: 11 }}
+            label={{ value: "HR (bpm)", angle: 90, position: "insideRight", fill: "#ff6b6b", fontSize: 11, dx: 4 }}
+            tickFormatter={(v: number) => `${v}`}
           />
 
           <Tooltip
-            contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
-            labelStyle={{ color: "#9ca3af" }}
-            itemStyle={{ color: "#e5e7eb" }}
+            contentStyle={{
+              backgroundColor: "#1a2332",
+              border: "1px solid #2a3a52",
+              borderRadius: "8px",
+              color: "#e4e6eb",
+            }}
+            labelStyle={{ color: "#8a96a7" }}
+            itemStyle={{ color: "#e4e6eb" }}
+          />
+
+          <Legend
+            wrapperStyle={{ color: "#e4e6eb", fontSize: 12 }}
           />
 
           <Line
             yAxisId="spo2"
             type="monotone"
             dataKey="spo2"
-            stroke="#22c55e"
+            stroke="#4dabf7"
             strokeWidth={2}
             dot={false}
             name="SpO2"
+            activeDot={{ r: 4, fill: "#4dabf7" }}
           />
           <Line
             yAxisId="hr"
             type="monotone"
             dataKey="heartRate"
-            stroke="#3b82f6"
+            stroke="#ff6b6b"
             strokeWidth={2}
             dot={false}
             name="Heart Rate"
+            activeDot={{ r: 4, fill: "#ff6b6b" }}
           />
         </ComposedChart>
       </ResponsiveContainer>
