@@ -524,7 +524,29 @@ class BleService : Service() {
                     historyClockSynced = true
                 }
 
-                result = downloadNewFiles(s, patientId)
+                // Live sensor read for current values
+                val liveReading = try { s.readSensors() } catch (_: Exception) { null }
+                if (liveReading != null) {
+                    repository.enqueue(patientId, liveReading)
+                    result = HistorySyncResult(
+                        deviceResponded = true,
+                        latestReading = liveReading
+                    )
+                }
+
+                // History file download for backfill
+                val historyResult = downloadNewFiles(s, patientId)
+                if (historyResult.insertedCount > 0) {
+                    result = historyResult
+                } else if (!historyResult.deviceResponded && result.deviceResponded) {
+                    // Keep live reading result
+                } else {
+                    result = historyResult.copy(
+                        latestReading = result.latestReading ?: historyResult.latestReading,
+                        deviceResponded = result.deviceResponded || historyResult.deviceResponded
+                    )
+                }
+
                 uploadOk = repository.flushToCloud()
                 queueCount = repository.pendingCount()
                 if (result.insertedCount > 0) {
