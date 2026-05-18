@@ -18,7 +18,8 @@ import { NightlySummary } from "@/lib/types";
 import { PatientStatus, LatestReading, ReadingRecord } from "@/lib/types";
 import { usePatient } from "@/hooks/usePatient";
 import { useSignalR } from "@/hooks/useSignalR";
-import VitalsCard, { spo2Color, hrColor, batteryColor, classifyMinSpo2, classifyPctBelow } from "@/components/VitalsCard";
+import { timeBelow, countDesaturationEvents } from "@/lib/stats";
+import VitalsCard, { spo2Color, hrColor, batteryColor, classifyMinSpo2, classifyPctBelow, classifyOdi } from "@/components/VitalsCard";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import PatientSelector from "@/components/PatientSelector";
 import LiveChart from "@/components/LiveChart";
@@ -35,34 +36,51 @@ interface ComputedStats {
   minSpo2: number | null;
   meanHr: number | null;
   timeBelow90Pct: number | null;
+  timeBelow88Pct: number | null;
+  odi3: number | null;
+  odi4: number | null;
+  durationMinutes: number | null;
   readingCount: number;
 }
 
 function computeStats(readings: ReadingRecord[]): ComputedStats {
   if (readings.length === 0) {
-    return { meanSpo2: null, minSpo2: null, meanHr: null, timeBelow90Pct: null, readingCount: 0 };
+    return { meanSpo2: null, minSpo2: null, meanHr: null, timeBelow90Pct: null, timeBelow88Pct: null, odi3: null, odi4: null, durationMinutes: null, readingCount: 0 };
   }
 
   let spo2Sum = 0;
   let hrSum = 0;
   let minSpo2 = Infinity;
-  let below90Count = 0;
 
   for (const r of readings) {
     spo2Sum += r.spo2;
     hrSum += r.heartRate;
     if (r.spo2 < minSpo2) minSpo2 = r.spo2;
-    if (r.spo2 < 90) below90Count++;
   }
 
   const n = readings.length;
-  const pctBelow90 = (below90Count / n) * 100;
+  const firstTs = new Date(readings[0].timestamp).getTime();
+  const lastTs = new Date(readings[n - 1].timestamp).getTime();
+  const durationSeconds = Math.max(0, (lastTs - firstTs) / 1000);
+  const durationHours = durationSeconds / 3600;
+
+  const below90Seconds = timeBelow(readings, 90);
+  const below88Seconds = timeBelow(readings, 88);
+  const pctBelow90 = durationSeconds > 0 ? (below90Seconds / durationSeconds) * 100 : 0;
+  const pctBelow88 = durationSeconds > 0 ? (below88Seconds / durationSeconds) * 100 : 0;
+
+  const odi3Events = countDesaturationEvents(readings, 3);
+  const odi4Events = countDesaturationEvents(readings, 4);
 
   return {
     meanSpo2: Math.round((spo2Sum / n) * 10) / 10,
     minSpo2: minSpo2 === Infinity ? null : minSpo2,
     meanHr: Math.round(hrSum / n),
     timeBelow90Pct: Math.round(pctBelow90 * 10) / 10,
+    timeBelow88Pct: Math.round(pctBelow88 * 10) / 10,
+    odi3: durationHours > 0 ? Math.round((odi3Events / durationHours) * 10) / 10 : 0,
+    odi4: durationHours > 0 ? Math.round((odi4Events / durationHours) * 10) / 10 : 0,
+    durationMinutes: Math.round(durationSeconds / 60),
     readingCount: n,
   };
 }
@@ -70,6 +88,13 @@ function computeStats(readings: ReadingRecord[]): ComputedStats {
 function fmtDuration(pct: number): string {
   if (pct === 0) return "0%";
   return `${pct}%`;
+}
+
+function fmtMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 export default function Dashboard() {
@@ -272,9 +297,8 @@ export default function Dashboard() {
 
         {status && (
           <>
-            {/* Stats grid — 8 cards in responsive grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3 mb-6">
-              {/* Current SpO2 — large */}
+            {/* Stats grid — clinical metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
               <VitalsCard
                 label="Current SpO2"
                 value={reading?.spo2 ?? null}
@@ -282,7 +306,6 @@ export default function Dashboard() {
                 colorClass={reading?.spo2 != null ? spo2Color(reading.spo2) : undefined}
                 large
               />
-              {/* Current HR — large */}
               <VitalsCard
                 label="Current HR"
                 value={reading?.heartRate ?? null}
@@ -290,42 +313,47 @@ export default function Dashboard() {
                 colorClass={reading?.heartRate != null ? hrColor(reading.heartRate) : undefined}
                 large
               />
-              {/* Battery */}
-              <VitalsCard
-                label="Battery"
-                value={reading?.batteryLevel ?? null}
-                unit="%"
-                colorClass={reading?.batteryLevel != null ? batteryColor(reading.batteryLevel) : undefined}
-              />
-              {/* Mean SpO2 */}
               <VitalsCard
                 label="Mean SpO2"
                 value={stats.meanSpo2}
                 unit="%"
               />
-              {/* Min SpO2 */}
               <VitalsCard
                 label="Min SpO2"
                 value={stats.minSpo2}
                 unit="%"
                 colorClass={stats.minSpo2 != null ? classifyMinSpo2(stats.minSpo2) : undefined}
               />
-              {/* Time <90% */}
+              <VitalsCard
+                label="Mean HR"
+                value={stats.meanHr}
+                unit="bpm"
+              />
               <VitalsCard
                 label="Time < 90%"
                 value={stats.timeBelow90Pct != null ? fmtDuration(stats.timeBelow90Pct) : null}
                 colorClass={stats.timeBelow90Pct != null ? classifyPctBelow(stats.timeBelow90Pct) : undefined}
               />
-              {/* Reading Count */}
               <VitalsCard
-                label="Readings"
-                value={stats.readingCount > 0 ? stats.readingCount : null}
+                label="Time < 88%"
+                value={stats.timeBelow88Pct != null ? fmtDuration(stats.timeBelow88Pct) : null}
+                colorClass={stats.timeBelow88Pct != null ? classifyPctBelow(stats.timeBelow88Pct) : undefined}
               />
-              {/* Connection Status */}
               <VitalsCard
-                label="Connection"
-                value={status.deviceOnline ? "Online" : "Offline"}
-                colorClass={status.deviceOnline ? "text-[#51cf66]" : "text-[#ff6b6b]"}
+                label="ODI-3"
+                value={stats.odi3}
+                unit="/hr"
+                colorClass={stats.odi3 != null ? classifyOdi(stats.odi3) : undefined}
+              />
+              <VitalsCard
+                label="ODI-4"
+                value={stats.odi4}
+                unit="/hr"
+                colorClass={stats.odi4 != null ? classifyOdi(stats.odi4) : undefined}
+              />
+              <VitalsCard
+                label="Duration"
+                value={stats.durationMinutes != null ? fmtMinutes(stats.durationMinutes) : null}
               />
             </div>
 

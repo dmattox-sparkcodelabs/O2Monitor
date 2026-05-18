@@ -1,182 +1,150 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { fetchReadings, fetchSummaries } from "@/lib/api";
 import { ReadingRecord, NightlySummary } from "@/lib/types";
+import { countDesaturationEvents } from "@/lib/stats";
 import { usePatient } from "@/hooks/usePatient";
-import HistoryChart from "@/components/HistoryChart";
-import NightlySummaryTable from "@/components/NightlySummaryTable";
+import { classifyMinSpo2, classifyPctBelow, classifyOdi } from "@/components/VitalsCard";
 import Nav from "@/components/Nav";
+import NightCard from "@/components/NightCard";
 
 const RANGE_OPTIONS = [
-  { label: "7d", hours: 7 * 24 },
-  { label: "30d", hours: 30 * 24 },
-  { label: "90d", hours: 90 * 24 },
+  { label: "7d", days: 7 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
 ];
 
-const PAGE_SIZE = 50;
+export interface NightOdi {
+  odi3: number | null;
+  odi4: number | null;
+  readings: ReadingRecord[];
+}
 
 export default function HistoryPage() {
   const { selectedId, loading: patientsLoading } = usePatient();
-  const [readings, setReadings] = useState<ReadingRecord[]>([]);
   const [summaries, setSummaries] = useState<NightlySummary[]>([]);
-  const [rangeHours, setRangeHours] = useState(7 * 24);
+  const [rangeDays, setRangeDays] = useState(30);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(0);
-
-  const rangeDays = Math.ceil(rangeHours / 24);
+  const [nightData, setNightData] = useState<Record<string, NightOdi>>({});
 
   const load = useCallback(async () => {
     if (!selectedId) return;
     setLoading(true);
     try {
-      const [readingsData, summariesData] = await Promise.all([
-        fetchReadings(selectedId, rangeHours),
-        fetchSummaries(selectedId, rangeDays),
-      ]);
-      setReadings(readingsData.readings);
-      setSummaries(summariesData.summaries);
-      setPage(0);
+      const res = await fetchSummaries(selectedId, rangeDays);
+      setSummaries(res.summaries);
+      setNightData({});
     } catch {
-      setReadings([]);
       setSummaries([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedId, rangeHours, rangeDays]);
+  }, [selectedId, rangeDays]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const stats = useMemo(() => {
-    if (readings.length === 0) return null;
-    const spo2Values = readings.map((r) => r.spo2);
-    const hrValues = readings.filter((r) => r.heartRate > 0).map((r) => r.heartRate);
-    return {
-      count: readings.length,
-      spo2Avg: Math.round((spo2Values.reduce((a, b) => a + b, 0) / spo2Values.length) * 10) / 10,
-      spo2Min: Math.min(...spo2Values),
-      spo2Max: Math.max(...spo2Values),
-      hrAvg: hrValues.length > 0 ? Math.round((hrValues.reduce((a, b) => a + b, 0) / hrValues.length) * 10) / 10 : 0,
-    };
-  }, [readings]);
+  const loadNightReadings = useCallback(async (nightDate: string) => {
+    if (!selectedId || nightData[nightDate]) return;
+    const nightStart = new Date(nightDate + "T20:00:00");
+    const nightEnd = new Date(nightDate + "T20:00:00");
+    nightEnd.setDate(nightEnd.getDate() + 1);
+    nightEnd.setHours(12, 0, 0, 0);
 
-  const sorted = useMemo(() => {
-    return [...readings].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [readings]);
+    const now = new Date();
+    const hoursAgo = Math.max(1, (now.getTime() - nightStart.getTime()) / (1000 * 60 * 60));
 
-  const pageCount = Math.ceil(sorted.length / PAGE_SIZE);
-  const pageReadings = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    try {
+      const res = await fetchReadings(selectedId, Math.ceil(hoursAgo));
+      const nightReadings = res.readings
+        .filter((r) => {
+          const ts = new Date(r.timestamp);
+          return ts >= nightStart && ts <= nightEnd;
+        })
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      const durationHours = nightReadings.length >= 2
+        ? (new Date(nightReadings[nightReadings.length - 1].timestamp).getTime() - new Date(nightReadings[0].timestamp).getTime()) / (1000 * 3600)
+        : 0;
+
+      const odi3Events = countDesaturationEvents(nightReadings, 3);
+      const odi4Events = countDesaturationEvents(nightReadings, 4);
+
+      setNightData((prev) => ({
+        ...prev,
+        [nightDate]: {
+          odi3: durationHours > 0 ? Math.round((odi3Events / durationHours) * 10) / 10 : 0,
+          odi4: durationHours > 0 ? Math.round((odi4Events / durationHours) * 10) / 10 : 0,
+          readings: nightReadings,
+        },
+      }));
+    } catch {
+      setNightData((prev) => ({
+        ...prev,
+        [nightDate]: { odi3: null, odi4: null, readings: [] },
+      }));
+    }
+  }, [selectedId, nightData]);
 
   if (patientsLoading) {
-    return <main className="flex-1 bg-gray-900 text-white flex items-center justify-center"><div className="text-gray-500">Loading...</div></main>;
+    return (
+      <main className="flex-1 bg-[#0f1419] text-[#e4e6eb] flex items-center justify-center">
+        <div className="text-[#8a96a7]">Loading...</div>
+      </main>
+    );
   }
 
   return (
-    <main className="flex-1 bg-gray-900 text-white">
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+    <main className="flex-1 bg-[#0f1419] text-[#e4e6eb]">
+      <header className="border-b border-[#2a3a52] px-6 py-4">
+        <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-6">
             <h1 className="text-xl font-semibold">History</h1>
             <Nav />
           </div>
-        </div>
-      </header>
-
-      <div className="max-w-5xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
+          <div className="flex gap-1.5">
             {RANGE_OPTIONS.map((opt) => (
               <button
-                key={opt.hours}
-                onClick={() => setRangeHours(opt.hours)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  rangeHours === opt.hours ? "bg-gray-600 text-white" : "text-gray-400 hover:text-gray-200"
+                key={opt.days}
+                onClick={() => setRangeDays(opt.days)}
+                className={`px-3 py-1.5 rounded-md text-[13px] font-medium border transition-colors duration-200 ${
+                  rangeDays === opt.days
+                    ? "bg-[#4dabf7] border-[#4dabf7] text-[#0b1220]"
+                    : "bg-[#1a2332] border-[#2a3a52] text-[#e4e6eb] hover:border-[#4dabf7]"
                 }`}
               >
                 {opt.label}
               </button>
             ))}
           </div>
-
-          {stats && (
-            <div className="flex gap-6 text-sm">
-              <div><span className="text-gray-400">Readings: </span><span className="font-medium">{stats.count.toLocaleString()}</span></div>
-              <div><span className="text-gray-400">Avg SpO2: </span><span className="font-medium">{stats.spo2Avg}%</span></div>
-              <div><span className="text-gray-400">Min SpO2: </span><span className="font-medium">{stats.spo2Min}%</span></div>
-              <div><span className="text-gray-400">Avg HR: </span><span className="font-medium">{stats.hrAvg} bpm</span></div>
-            </div>
-          )}
         </div>
+      </header>
 
+      <div className="w-full px-6 py-6 space-y-4">
         {loading ? (
-          <div className="text-center text-gray-500 py-8">Loading readings...</div>
+          <div className="text-center text-[#8a96a7] py-20">Loading summaries...</div>
+        ) : summaries.length === 0 ? (
+          <div className="text-center text-[#8a96a7] py-20">No nightly data available yet.</div>
         ) : (
-          <>
-            <HistoryChart readings={readings} />
-
-            <div className="mt-6">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-gray-400 uppercase border-b border-gray-700">
-                    <tr>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">SpO2</th>
-                      <th className="px-4 py-3">HR</th>
-                      <th className="px-4 py-3">Battery</th>
-                      <th className="px-4 py-3">Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageReadings.map((r) => (
-                      <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                        <td className="px-4 py-2 whitespace-nowrap">{new Date(r.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })}</td>
-                        <td className={`px-4 py-2 ${r.spo2 < 90 ? "text-red-400" : r.spo2 < 92 ? "text-yellow-400" : ""}`}>{r.spo2}%</td>
-                        <td className={`px-4 py-2 ${r.heartRate > 120 || r.heartRate < 50 ? "text-red-400" : ""}`}>{r.heartRate}</td>
-                        <td className="px-4 py-2">{r.batteryLevel}%</td>
-                        <td className="px-4 py-2 text-gray-500">{r.source}</td>
-                      </tr>
-                    ))}
-                    {pageReadings.length === 0 && (
-                      <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">No readings found</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {pageCount > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  <button
-                    onClick={() => setPage(Math.max(0, page - 1))}
-                    disabled={page === 0}
-                    className="px-3 py-1 rounded text-sm bg-gray-800 text-gray-300 disabled:opacity-30"
-                  >
-                    ← Prev
-                  </button>
-                  <span className="text-sm text-gray-400">
-                    Page {page + 1} of {pageCount}
-                  </span>
-                  <button
-                    onClick={() => setPage(Math.min(pageCount - 1, page + 1))}
-                    disabled={page >= pageCount - 1}
-                    className="px-3 py-1 rounded text-sm bg-gray-800 text-gray-300 disabled:opacity-30"
-                  >
-                    Next →
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {summaries.length > 0 && (
-              <div className="mt-8">
-                <h2 className="text-lg font-medium mb-4">Nightly Summaries</h2>
-                <NightlySummaryTable summaries={summaries} />
-              </div>
-            )}
-          </>
+          summaries.map((s) => (
+            <NightCard
+              key={s.nightDate}
+              summary={s}
+              odi={nightData[s.nightDate] ?? null}
+              onVisible={() => loadNightReadings(s.nightDate)}
+              classifyMinSpo2={classifyMinSpo2}
+              classifyPctBelow={classifyPctBelow}
+              classifyOdi={classifyOdi}
+            />
+          ))
         )}
       </div>
+
+      <footer className="text-center text-xs text-[#5a6a7a] py-4 pb-20 md:pb-4">
+        NOT FOR MEDICAL USE -- Proof of concept only
+      </footer>
     </main>
   );
 }

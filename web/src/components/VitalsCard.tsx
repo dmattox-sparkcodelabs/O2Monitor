@@ -45,7 +45,13 @@ function classifyPctBelow(pct: number): string {
   return "text-[#51cf66]";
 }
 
-export { spo2Color, hrColor, batteryColor, classifyMinSpo2, classifyPctBelow };
+function classifyOdi(odi: number): string {
+  if (odi >= 15) return "text-[#ff6b6b]";
+  if (odi >= 5) return "text-[#ffd43b]";
+  return "text-[#51cf66]";
+}
+
+export { spo2Color, hrColor, batteryColor, classifyMinSpo2, classifyPctBelow, classifyOdi };
 
 export default function VitalsCard({ label, value, unit, colorClass, large }: VitalsCardProps) {
   const valueSize = large
