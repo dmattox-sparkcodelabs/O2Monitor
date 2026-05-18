@@ -522,12 +522,7 @@ class BleService : Service() {
             var uploadOk = false
             var queueCount = 0
             try {
-                if (!historyClockSynced) {
-                    s.setTime(LocalDateTime.now())
-                    historyClockSynced = true
-                }
-
-                // Live sensor read for current values
+                // Live sensor read only — no history download for battery savings
                 val liveReading = try { s.readSensors() } catch (_: Exception) { null }
                 if (liveReading != null) {
                     repository.enqueue(patientId, liveReading)
@@ -535,26 +530,12 @@ class BleService : Service() {
                         deviceResponded = true,
                         latestReading = liveReading
                     )
-                }
-
-                // History file download for backfill
-                val historyResult = downloadNewFiles(s, patientId)
-                if (historyResult.insertedCount > 0) {
-                    result = historyResult
-                } else if (!historyResult.deviceResponded && result.deviceResponded) {
-                    // Keep live reading result
                 } else {
-                    result = historyResult.copy(
-                        latestReading = result.latestReading ?: historyResult.latestReading,
-                        deviceResponded = result.deviceResponded || historyResult.deviceResponded
-                    )
+                    result = HistorySyncResult(deviceResponded = false)
                 }
 
                 uploadOk = repository.flushToCloud()
                 queueCount = repository.pendingCount()
-                if (result.insertedCount > 0) {
-                    repository.pruneExpired()
-                }
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "History sync failed: ${e.message}", e)
             } finally {
