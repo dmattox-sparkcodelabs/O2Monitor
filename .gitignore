@@ -37,6 +37,9 @@ credentials.json
 # Claude Code
 .claude/
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # Android / Gradle
 android/**/build/
 android/**/.gradle/
