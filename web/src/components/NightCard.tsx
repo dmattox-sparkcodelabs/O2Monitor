@@ -201,8 +201,8 @@ function CompactChart({ readings, nightDate }: { readings: ReadingRecord[]; nigh
           labelStyle={{ color: "#8a96a7" }}
           itemStyle={{ color: "#e4e6eb" }}
         />
-        <Line yAxisId="spo2" type="monotone" dataKey="spo2" stroke="#51cf66" strokeWidth={1.5} dot={false} name="SpO2" connectNulls={false} />
-        <Line yAxisId="hr" type="monotone" dataKey="hr" stroke="#4dabf7" strokeWidth={1} dot={false} name="HR" connectNulls={false} />
+        <Line yAxisId="spo2" type="monotone" dataKey="spo2" stroke="#51cf66" strokeWidth={1.5} dot={false} name="SpO2" connectNulls={false} isAnimationActive={false} />
+        <Line yAxisId="hr" type="monotone" dataKey="hr" stroke="#4dabf7" strokeWidth={1} dot={false} name="HR" connectNulls={false} isAnimationActive={false} />
       </ComposedChart>
     </ResponsiveContainer>
   );

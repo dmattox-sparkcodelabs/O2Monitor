@@ -4,3 +4,75 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.4in 0.3in;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: white !important;
+  }
+
+  /* Hide nav, footer, controls */
+  header, footer, nav,
+  .print\\:hidden,
+  [class*="bottom-0"] {
+    display: none !important;
+  }
+
+  /* Remove dark backgrounds for readability */
+  main {
+    background: white !important;
+    color: #1a1a1a !important;
+    padding: 0 !important;
+  }
+
+  /* Night cards: compact, no overflow issues */
+  .space-y-4 > div {
+    break-inside: avoid;
+    border: 1px solid #ccc !important;
+    background: white !important;
+    margin-bottom: 8px !important;
+    page-break-inside: avoid;
+  }
+
+  /* Card headers */
+  .space-y-4 > div > div:first-child {
+    background: #f5f5f5 !important;
+    border-bottom: 1px solid #ccc !important;
+    color: #1a1a1a !important;
+  }
+  .space-y-4 > div > div:first-child span {
+    color: #1a1a1a !important;
+  }
+
+  /* Metrics row */
+  .space-y-4 .grid {
+    background: transparent !important;
+  }
+  .space-y-4 .grid > div {
+    background: white !important;
+    padding: 4px 2px !important;
+  }
+  .space-y-4 .grid > div > div:first-child {
+    color: #666 !important;
+    font-size: 9px !important;
+  }
+  .space-y-4 .grid > div > div:last-child {
+    font-size: 14px !important;
+  }
+
+  /* Charts: shrink height */
+  .recharts-responsive-container {
+    height: 80px !important;
+  }
+
+  /* Squeeze page content */
+  .space-y-4 {
+    gap: 6px !important;
+  }
+}
