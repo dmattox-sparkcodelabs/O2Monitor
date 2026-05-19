@@ -63,7 +63,7 @@
     border-bottom: 1px solid #ccc !important;
   }
   .space-y-4 > div > div:first-child span {
-    color: #1a1a1a !important;
+    color: #000 !important;
   }
 
   /* Metrics row */
@@ -75,10 +75,11 @@
     padding: 3px 2px !important;
   }
   .space-y-4 .grid > div > div:first-child {
-    color: #555 !important;
+    color: #000 !important;
     font-size: 8px !important;
   }
   .space-y-4 .grid > div > div:last-child {
+    color: #000 !important;
     font-size: 13px !important;
   }
 
