@@ -11,16 +11,12 @@
     margin: 0.4in 0.3in;
   }
 
-  * {
-    overflow: visible !important;
-  }
-
-  body {
+  html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    background: white !important;
     width: 7.5in !important;
     max-width: 7.5in !important;
+    overflow: hidden !important;
   }
 
   /* Hide nav, footer, controls, mobile nav */
@@ -30,26 +26,35 @@
     display: none !important;
   }
 
-  /* Force everything to page width */
-  main, main > div, .space-y-4, .space-y-4 > div {
-    width: 100% !important;
-    max-width: 7.5in !important;
-    box-sizing: border-box !important;
-  }
-
   main {
     background: white !important;
     color: #1a1a1a !important;
-    padding: 0 0.1in !important;
+    padding: 0 !important;
+    width: 7.5in !important;
+    max-width: 7.5in !important;
+  }
+
+  main > div {
+    padding: 0.1in !important;
+    width: 7.5in !important;
+    max-width: 7.5in !important;
   }
 
   /* Night cards */
+  .space-y-4 {
+    gap: 4px !important;
+    width: 7.5in !important;
+  }
+
   .space-y-4 > div {
     break-inside: avoid;
     page-break-inside: avoid;
     border: 1px solid #ccc !important;
     background: white !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 4px !important;
+    width: 7.3in !important;
+    max-width: 7.3in !important;
+    overflow: hidden !important;
   }
 
   /* Card headers */
@@ -77,20 +82,15 @@
     font-size: 13px !important;
   }
 
-  /* Charts: scale entire wrapper to fit page width.
-     Screen chart is ~1200px wide rendered into a ~720px (7.5in) page = 60% scale.
-     Scale both axes uniformly so the chart isn't distorted. */
+  /* Charts: scale to fit 7.3in card width.
+     The SVG renders at screen width (~1200px). 7.3in ≈ 700px at 96dpi.
+     700/1200 ≈ 0.58. Scale uniformly, collapse container to scaled height. */
   .recharts-wrapper {
     transform: scale(0.58) !important;
     transform-origin: top left !important;
   }
-  /* Collapse the container to match the scaled height so it doesn't leave a gap */
   .recharts-responsive-container {
     height: 70px !important;
-  }
-
-  /* Squeeze spacing */
-  .space-y-4 {
-    gap: 4px !important;
+    overflow: hidden !important;
   }
 }
