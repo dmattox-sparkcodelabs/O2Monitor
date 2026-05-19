@@ -111,12 +111,18 @@ export default function HistoryPage() {
       const chart = document.querySelector(".recharts-wrapper") as HTMLElement | null;
       if (chart) {
         const chartWidth = chart.offsetWidth;
-        const scale = Math.min(1, pageWidthPx / chartWidth);
-        document.documentElement.style.setProperty("--print-chart-scale", String(scale));
+        const scaleX = Math.min(1, pageWidthPx / chartWidth);
+        const scaleY = scaleX * 2;
+        const containerHeight = 120 * scaleY;
+        document.documentElement.style.setProperty("--print-chart-scale", String(scaleX));
+        document.documentElement.style.setProperty("--print-chart-scale-y", String(scaleY));
+        document.documentElement.style.setProperty("--print-chart-height", `${containerHeight}px`);
       }
     };
     const onAfterPrint = () => {
       document.documentElement.style.removeProperty("--print-chart-scale");
+      document.documentElement.style.removeProperty("--print-chart-scale-y");
+      document.documentElement.style.removeProperty("--print-chart-height");
     };
     window.addEventListener("beforeprint", onBeforePrint);
     window.addEventListener("afterprint", onAfterPrint);

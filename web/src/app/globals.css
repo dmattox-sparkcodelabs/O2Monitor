@@ -83,13 +83,17 @@
     font-size: 13px !important;
   }
 
-  /* Charts: scaled by JS beforeprint handler via --print-chart-scale CSS var */
+  /* Charts: scaled by JS beforeprint handler via CSS vars */
   .recharts-wrapper {
-    transform: scale(var(--print-chart-scale, 0.5)) !important;
+    transform: scale(var(--print-chart-scale, 0.5), var(--print-chart-scale-y, 1)) !important;
     transform-origin: top left !important;
   }
   .recharts-responsive-container {
-    height: calc(120px * var(--print-chart-scale, 0.5)) !important;
+    height: var(--print-chart-height, 120px) !important;
     overflow: hidden !important;
+  }
+  /* Thicker lines for print readability */
+  .recharts-line .recharts-line-curve {
+    stroke-width: 4.5 !important;
   }
 }
