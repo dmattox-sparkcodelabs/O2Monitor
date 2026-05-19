@@ -107,11 +107,12 @@ export default function HistoryPage() {
 
   useEffect(() => {
     const onBeforePrint = () => {
-      const pageWidthPx = 7.3 * 96;
+      const card = document.querySelector(".space-y-4 > div") as HTMLElement | null;
       const chart = document.querySelector(".recharts-wrapper") as HTMLElement | null;
       if (chart) {
+        const targetWidth = card ? card.offsetWidth - 16 : 7.5 * 96;
         const chartWidth = chart.offsetWidth;
-        const scaleX = Math.min(1, pageWidthPx / chartWidth);
+        const scaleX = Math.min(1, targetWidth / chartWidth);
         const scaleY = scaleX * 2;
         const containerHeight = 120 * scaleY;
         document.documentElement.style.setProperty("--print-chart-scale", String(scaleX));

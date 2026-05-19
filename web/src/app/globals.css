@@ -91,4 +91,9 @@
   .recharts-line .recharts-line-curve {
     stroke-width: 4.5 !important;
   }
+  /* Black axis text */
+  .recharts-cartesian-axis-tick text,
+  .recharts-label {
+    fill: #000 !important;
+  }
 }
