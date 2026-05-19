@@ -11,40 +11,51 @@
     margin: 0.4in 0.3in;
   }
 
+  * {
+    overflow: visible !important;
+  }
+
   body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     background: white !important;
+    width: 7.5in !important;
+    max-width: 7.5in !important;
   }
 
-  /* Hide nav, footer, controls */
+  /* Hide nav, footer, controls, mobile nav */
   header, footer, nav,
   .print\\:hidden,
   [class*="bottom-0"] {
     display: none !important;
   }
 
-  /* Remove dark backgrounds for readability */
+  /* Force everything to page width */
+  main, main > div, .space-y-4, .space-y-4 > div {
+    width: 100% !important;
+    max-width: 7.5in !important;
+    box-sizing: border-box !important;
+  }
+
   main {
     background: white !important;
     color: #1a1a1a !important;
-    padding: 0 !important;
+    padding: 0 0.1in !important;
   }
 
-  /* Night cards: compact, no overflow issues */
+  /* Night cards */
   .space-y-4 > div {
     break-inside: avoid;
+    page-break-inside: avoid;
     border: 1px solid #ccc !important;
     background: white !important;
-    margin-bottom: 8px !important;
-    page-break-inside: avoid;
+    margin-bottom: 6px !important;
   }
 
   /* Card headers */
   .space-y-4 > div > div:first-child {
-    background: #f5f5f5 !important;
+    background: #f0f0f0 !important;
     border-bottom: 1px solid #ccc !important;
-    color: #1a1a1a !important;
   }
   .space-y-4 > div > div:first-child span {
     color: #1a1a1a !important;
@@ -56,23 +67,30 @@
   }
   .space-y-4 .grid > div {
     background: white !important;
-    padding: 4px 2px !important;
+    padding: 3px 2px !important;
   }
   .space-y-4 .grid > div > div:first-child {
-    color: #666 !important;
-    font-size: 9px !important;
+    color: #555 !important;
+    font-size: 8px !important;
   }
   .space-y-4 .grid > div > div:last-child {
-    font-size: 14px !important;
+    font-size: 13px !important;
   }
 
-  /* Charts: shrink height */
-  .recharts-responsive-container {
+  /* Charts: force SVG to fit page width */
+  .recharts-responsive-container,
+  .recharts-wrapper {
+    width: 100% !important;
     height: 80px !important;
+    overflow: hidden !important;
+  }
+  .recharts-surface {
+    width: 100% !important;
+    height: auto !important;
   }
 
-  /* Squeeze page content */
+  /* Squeeze spacing */
   .space-y-4 {
-    gap: 6px !important;
+    gap: 4px !important;
   }
 }

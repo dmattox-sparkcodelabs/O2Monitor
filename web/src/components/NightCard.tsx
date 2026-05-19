@@ -325,7 +325,7 @@ export default function NightCard({ summary, odi, onVisible, sleepOnly, classify
       </div>
 
       {/* Compact chart */}
-      <div className="px-2 pt-1 pb-2">
+      <div className="px-2 pt-1 pb-2 print:px-0 print:w-full print:max-w-full print:overflow-hidden">
         {odi ? (
           <CompactChart readings={odi.readings} nightDate={s.nightDate} />
         ) : (
