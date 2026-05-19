@@ -77,16 +77,16 @@
     font-size: 13px !important;
   }
 
-  /* Charts: force SVG to fit page width */
-  .recharts-responsive-container,
+  /* Charts: scale entire wrapper to fit page width.
+     Screen chart is ~1200px wide rendered into a ~720px (7.5in) page = 60% scale.
+     Scale both axes uniformly so the chart isn't distorted. */
   .recharts-wrapper {
-    width: 100% !important;
-    height: 80px !important;
-    overflow: hidden !important;
+    transform: scale(0.58) !important;
+    transform-origin: top left !important;
   }
-  .recharts-surface {
-    width: 100% !important;
-    height: auto !important;
+  /* Collapse the container to match the scaled height so it doesn't leave a gap */
+  .recharts-responsive-container {
+    height: 70px !important;
   }
 
   /* Squeeze spacing */
