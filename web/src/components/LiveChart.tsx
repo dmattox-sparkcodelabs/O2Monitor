@@ -167,10 +167,13 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
             <ReferenceArea y1={50} y2={88} yAxisId="spo2" fill="#ff6b6b" fillOpacity={0.06} />
             <ReferenceArea y1={88} y2={90} yAxisId="spo2" fill="#ffd43b" fillOpacity={0.06} />
             <XAxis
-              dataKey="time"
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={["dataMin", "dataMax"]}
+              tickFormatter={(ts: number) => formatTime(new Date(ts).toISOString())}
               stroke="#2a3a52"
               tick={{ fill: "#8a96a7", fontSize: 11 }}
-              interval="preserveStartEnd"
               minTickGap={60}
             />
             <YAxis
@@ -191,13 +194,14 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
               tickFormatter={(v: number) => `${v}`}
             />
             <Tooltip
+              labelFormatter={(ts: unknown) => new Date(Number(ts)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}
               contentStyle={{ backgroundColor: "#1a2332", border: "1px solid #2a3a52", borderRadius: "8px", color: "#e4e6eb" }}
               labelStyle={{ color: "#8a96a7" }}
               itemStyle={{ color: "#e4e6eb" }}
             />
             <Legend wrapperStyle={{ color: "#e4e6eb", fontSize: 12 }} />
-            <Line yAxisId="spo2" type="monotone" dataKey="spo2" stroke="#4dabf7" strokeWidth={2} dot={false} name="SpO2" activeDot={{ r: 4, fill: "#4dabf7" }} />
-            <Line yAxisId="hr" type="monotone" dataKey="heartRate" stroke="#ff6b6b" strokeWidth={2} dot={false} name="Heart Rate" activeDot={{ r: 4, fill: "#ff6b6b" }} />
+            <Line yAxisId="spo2" type="monotone" dataKey="spo2" stroke="#4dabf7" strokeWidth={2} dot={false} name="SpO2" activeDot={{ r: 4, fill: "#4dabf7" }} isAnimationActive={false} />
+            <Line yAxisId="hr" type="monotone" dataKey="heartRate" stroke="#ff6b6b" strokeWidth={2} dot={false} name="Heart Rate" activeDot={{ r: 4, fill: "#ff6b6b" }} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
