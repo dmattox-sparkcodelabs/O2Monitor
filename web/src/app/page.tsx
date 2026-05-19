@@ -279,13 +279,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Disclaimer bar */}
-      <div className="w-full px-6 mt-4">
-        <div className="bg-[#2a1a1a] border-l-[3px] border-l-[#ff6b6b] px-3 py-2 text-xs text-[#ffa8a8]">
-          Not a medical device. Data here is for personal awareness only and is not a substitute for clinical evaluation.
-        </div>
-      </div>
-
       <div className="w-full px-6 py-6">
         {/* Alert banners */}
         {status && status.activeAlerts.length > 0 && (
@@ -432,9 +425,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      <footer className="text-center text-xs text-[#5a6a7a] py-4 pb-20 md:pb-4">
-        NOT FOR MEDICAL USE -- Proof of concept only
-      </footer>
     </main>
   );
 }

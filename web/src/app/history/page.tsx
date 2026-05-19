@@ -138,7 +138,6 @@ export default function HistoryPage() {
     <main className="flex-1 bg-[#0f1419] text-[#e4e6eb]">
       <div className="hidden print:block text-center mb-4">
         <h1 className="text-xl font-bold text-black">O2 Monitor — Sleep History</h1>
-        <p className="text-xs text-black">NOT FOR MEDICAL USE — Proof of concept only</p>
       </div>
       <header className="border-b border-[#2a3a52] px-6 py-4 print:hidden">
         <div className="w-full flex items-center justify-between">
@@ -201,9 +200,6 @@ export default function HistoryPage() {
         )}
       </div>
 
-      <footer className="text-center text-xs text-[#5a6a7a] py-4 pb-20 md:pb-4 print:hidden">
-        NOT FOR MEDICAL USE -- Proof of concept only
-      </footer>
     </main>
   );
 }
