@@ -14,9 +14,9 @@
   html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    width: 7.5in !important;
-    max-width: 7.5in !important;
-    overflow: hidden !important;
+    background: white !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   /* Hide nav, footer, controls, mobile nav */
@@ -26,24 +26,19 @@
     display: none !important;
   }
 
-  main {
+  /* White background everywhere */
+  main, main > div, .space-y-4 {
     background: white !important;
-    color: #1a1a1a !important;
+    color: #000 !important;
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 0 !important;
-    width: 7.5in !important;
-    max-width: 7.5in !important;
-  }
-
-  main > div {
-    padding: 0.1in !important;
-    width: 7.5in !important;
-    max-width: 7.5in !important;
+    margin: 0 !important;
   }
 
   /* Night cards */
   .space-y-4 {
     gap: 4px !important;
-    width: 7.5in !important;
   }
 
   .space-y-4 > div {
@@ -52,8 +47,8 @@
     border: 1px solid #ccc !important;
     background: white !important;
     margin-bottom: 4px !important;
-    width: 7.3in !important;
-    max-width: 7.3in !important;
+    width: 100% !important;
+    max-width: 100% !important;
     overflow: hidden !important;
   }
 
