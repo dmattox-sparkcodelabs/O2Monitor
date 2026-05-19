@@ -105,6 +105,27 @@ export default function HistoryPage() {
     return () => clearInterval(interval);
   }, [selectedId, currentNightDate, loadNightReadings]);
 
+  useEffect(() => {
+    const onBeforePrint = () => {
+      const pageWidthPx = 7.3 * 96;
+      const chart = document.querySelector(".recharts-wrapper") as HTMLElement | null;
+      if (chart) {
+        const chartWidth = chart.offsetWidth;
+        const scale = Math.min(1, pageWidthPx / chartWidth);
+        document.documentElement.style.setProperty("--print-chart-scale", String(scale));
+      }
+    };
+    const onAfterPrint = () => {
+      document.documentElement.style.removeProperty("--print-chart-scale");
+    };
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("afterprint", onAfterPrint);
+    };
+  }, []);
+
   if (patientsLoading) {
     return (
       <main className="flex-1 bg-[#0f1419] text-[#e4e6eb] flex items-center justify-center">

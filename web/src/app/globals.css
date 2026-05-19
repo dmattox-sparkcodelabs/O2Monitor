@@ -82,15 +82,13 @@
     font-size: 13px !important;
   }
 
-  /* Charts: scale to fit 7.3in card width.
-     The SVG renders at screen width (~1200px). 7.3in ≈ 700px at 96dpi.
-     700/1200 ≈ 0.58. Scale uniformly, collapse container to scaled height. */
+  /* Charts: scaled by JS beforeprint handler via --print-chart-scale CSS var */
   .recharts-wrapper {
-    transform: scale(0.58) !important;
+    transform: scale(var(--print-chart-scale, 0.5)) !important;
     transform-origin: top left !important;
   }
   .recharts-responsive-container {
-    height: 70px !important;
+    height: calc(120px * var(--print-chart-scale, 0.5)) !important;
     overflow: hidden !important;
   }
 }
