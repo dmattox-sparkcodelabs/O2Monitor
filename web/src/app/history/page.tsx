@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { fetchNightReadings, fetchSummaries } from "@/lib/api";
+import { fetchNightReadings, fetchSummaries, triggerAggregation } from "@/lib/api";
 import { ReadingRecord, NightlySummary } from "@/lib/types";
 import { countDesaturationEvents } from "@/lib/stats";
 import { usePatient } from "@/hooks/usePatient";
 import { classifyMinSpo2, classifyPctBelow, classifyOdi } from "@/components/VitalsCard";
 import Nav from "@/components/Nav";
+import PatientSelector from "@/components/PatientSelector";
 import NightCard from "@/components/NightCard";
 
 const RANGE_OPTIONS = [
@@ -22,7 +23,7 @@ export interface NightOdi {
 }
 
 export default function HistoryPage() {
-  const { selectedId, loading: patientsLoading } = usePatient();
+  const { patients, selectedId, selectPatient, loading: patientsLoading } = usePatient();
   const [summaries, setSummaries] = useState<NightlySummary[]>([]);
   const [rangeDays, setRangeDays] = useState(30);
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,7 @@ export default function HistoryPage() {
     if (!selectedId) return;
     setLoading(true);
     try {
+      await triggerAggregation(selectedId).catch(() => {});
       const res = await fetchSummaries(selectedId, rangeDays);
       setSummaries(res.summaries);
       setNightData({});
@@ -118,6 +120,11 @@ export default function HistoryPage() {
           <div className="flex items-center gap-6">
             <h1 className="text-xl font-semibold">History</h1>
             <Nav />
+            <PatientSelector
+              patients={patients}
+              selectedId={selectedId}
+              onSelect={selectPatient}
+            />
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer select-none">

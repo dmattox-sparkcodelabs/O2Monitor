@@ -49,6 +49,14 @@ export async function fetchNightReadings(patientId: string, since: string, until
   return res.json();
 }
 
+export async function triggerAggregation(patientId: string, nightDate?: string): Promise<void> {
+  const params = nightDate ? `?nightDate=${nightDate}` : "";
+  await fetch(`/api/patients/${patientId}/aggregate${params}`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+}
+
 export async function fetchSummaries(patientId: string, days: number = 30): Promise<SummariesResponse> {
   const res = await fetch(`/api/patients/${patientId}/summaries?days=${days}`, {
     headers: authHeaders(),
