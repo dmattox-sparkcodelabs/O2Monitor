@@ -2,6 +2,7 @@ package com.o2monitor.app
 
 import android.Manifest
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -50,7 +52,10 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val startDestination = resolveStartDestination()
 
-                var blePermissionsGranted by remember { mutableStateOf(false) }
+                val alreadyGranted = BLE_PERMISSIONS.all {
+                    ContextCompat.checkSelfPermission(this@MainActivity, it) == PackageManager.PERMISSION_GRANTED
+                }
+                var blePermissionsGranted by remember { mutableStateOf(alreadyGranted) }
 
                 val permissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -59,7 +64,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    permissionLauncher.launch(APP_PERMISSIONS)
+                    if (!blePermissionsGranted) {
+                        permissionLauncher.launch(APP_PERMISSIONS)
+                    }
                 }
 
                 NavHost(navController = navController, startDestination = startDestination) {

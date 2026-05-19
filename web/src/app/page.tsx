@@ -137,7 +137,16 @@ export default function Dashboard() {
     setHistoricalReadings([]);
     setRealtimeReadings([]);
     fetchReadings(selectedId, dataRangeHours)
-      .then((res) => setHistoricalReadings(res.readings))
+      .then((res) => {
+        const sorted = [...res.readings].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const deduped: typeof sorted = [];
+        for (const r of sorted) {
+          if (deduped.length === 0 || new Date(r.timestamp).getTime() - new Date(deduped[deduped.length - 1].timestamp).getTime() >= 1000) {
+            deduped.push(r);
+          }
+        }
+        setHistoricalReadings(deduped);
+      })
       .catch(() => {});
   }, [selectedId, dataRangeHours]);
 
@@ -375,13 +384,28 @@ export default function Dashboard() {
                     }
                   }}
                 >
-                  <option value="">Live (recent)</option>
-                  {availableNights.map((n) => (
-                    <option key={n.nightDate} value={n.nightDate}>
-                      {new Date(n.nightDate + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
-                      {" — "}SpO2 avg {n.spo2Avg}% min {n.spo2Min}%
-                    </option>
-                  ))}
+                  {(() => {
+                    const now = new Date();
+                    const todayNoon = new Date(now);
+                    todayNoon.setHours(12, 0, 0, 0);
+                    const nightDate = now >= todayNoon ? new Date(now) : new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    nightDate.setHours(12, 0, 0, 0);
+                    const evening = new Date(nightDate);
+                    evening.setDate(evening.getDate() - 1);
+                    const fmt = (d: Date) => d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+                    return <option value="">{fmt(evening)} - {fmt(nightDate)} (Live)</option>;
+                  })()}
+                  {availableNights.map((n) => {
+                    const evening = new Date(n.nightDate + "T12:00:00");
+                    evening.setDate(evening.getDate() - 1);
+                    const morning = new Date(n.nightDate + "T12:00:00");
+                    const fmt = (d: Date) => d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+                    return (
+                      <option key={n.nightDate} value={n.nightDate}>
+                        {fmt(evening)} - {fmt(morning)} — SpO2 avg {n.spo2Avg}% min {n.spo2Min}%
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <TimeRangeToggle value={zoomHours} onChange={setZoomHours} />

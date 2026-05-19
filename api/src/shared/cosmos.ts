@@ -43,4 +43,9 @@ export async function initializeDatabase(): Promise<void> {
     id: "patients",
     partitionKey: { paths: ["/id"] },
   });
+
+  await db.containers.createIfNotExists({
+    id: "dailySummaries",
+    partitionKey: { paths: ["/patientId"] },
+  });
 }

@@ -96,13 +96,12 @@ fun DashboardScreen(
     var bleState by remember { mutableStateOf(BleState.IDLE) }
     var oxiState by remember { mutableStateOf(OxiDisplayState()) }
 
-    // Auto-start monitoring when dashboard loads
+    // Auto-start monitoring when dashboard loads (idempotent — service handles re-entry)
     androidx.compose.runtime.LaunchedEffect(permissionsGranted, patientId) {
-        if (permissionsGranted && patientId.isNotBlank() && !isRunning) {
+        if (permissionsGranted && patientId.isNotBlank()) {
             val startIntent = Intent(context, BleService::class.java)
             context.startForegroundService(startIntent)
             isRunning = true
-            bleState = BleState.SCANNING
         }
     }
 

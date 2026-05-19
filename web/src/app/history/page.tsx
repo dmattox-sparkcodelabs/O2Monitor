@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { fetchReadings, fetchSummaries } from "@/lib/api";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { fetchNightReadings, fetchSummaries } from "@/lib/api";
 import { ReadingRecord, NightlySummary } from "@/lib/types";
 import { countDesaturationEvents } from "@/lib/stats";
 import { usePatient } from "@/hooks/usePatient";
@@ -27,6 +27,7 @@ export default function HistoryPage() {
   const [rangeDays, setRangeDays] = useState(30);
   const [loading, setLoading] = useState(false);
   const [nightData, setNightData] = useState<Record<string, NightOdi>>({});
+  const [sleepOnly, setSleepOnly] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedId) return;
@@ -46,23 +47,28 @@ export default function HistoryPage() {
     load();
   }, [load]);
 
-  const loadNightReadings = useCallback(async (nightDate: string) => {
-    if (!selectedId || nightData[nightDate]) return;
-    const nightStart = new Date(nightDate + "T20:00:00");
-    const nightEnd = new Date(nightDate + "T20:00:00");
-    nightEnd.setDate(nightEnd.getDate() + 1);
-    nightEnd.setHours(12, 0, 0, 0);
-
+  const currentNightDate = useMemo(() => {
     const now = new Date();
-    const hoursAgo = Math.max(1, (now.getTime() - nightStart.getTime()) / (1000 * 60 * 60));
+    const noon = new Date(now);
+    noon.setHours(12, 0, 0, 0);
+    const d = now >= noon ? new Date(now.getTime() + 24 * 60 * 60 * 1000) : now;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const nightDataRef = useRef(nightData);
+  nightDataRef.current = nightData;
+
+  const loadNightReadings = useCallback(async (nightDate: string, force = false) => {
+    if (!selectedId || (!force && nightDataRef.current[nightDate])) return;
+    const [y, m, d] = nightDate.split("-").map(Number);
+    const sinceDate = new Date(y, m - 1, d - 1, 12, 0, 0, 0);
+    const since = sinceDate.toISOString();
+    const untilDate = new Date(y, m - 1, d, 12, 0, 0, 0);
+    const until = untilDate.toISOString();
 
     try {
-      const res = await fetchReadings(selectedId, Math.ceil(hoursAgo));
+      const res = await fetchNightReadings(selectedId, since, until);
       const nightReadings = res.readings
-        .filter((r) => {
-          const ts = new Date(r.timestamp);
-          return ts >= nightStart && ts <= nightEnd;
-        })
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
       const durationHours = nightReadings.length >= 2
@@ -86,7 +92,16 @@ export default function HistoryPage() {
         [nightDate]: { odi3: null, odi4: null, readings: [] },
       }));
     }
-  }, [selectedId, nightData]);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || !currentNightDate) return;
+    loadNightReadings(currentNightDate, true);
+    const interval = setInterval(() => {
+      loadNightReadings(currentNightDate, true);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [selectedId, currentNightDate, loadNightReadings]);
 
   if (patientsLoading) {
     return (
@@ -104,20 +119,31 @@ export default function HistoryPage() {
             <h1 className="text-xl font-semibold">History</h1>
             <Nav />
           </div>
-          <div className="flex gap-1.5">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                onClick={() => setRangeDays(opt.days)}
-                className={`px-3 py-1.5 rounded-md text-[13px] font-medium border transition-colors duration-200 ${
-                  rangeDays === opt.days
-                    ? "bg-[#4dabf7] border-[#4dabf7] text-[#0b1220]"
-                    : "bg-[#1a2332] border-[#2a3a52] text-[#e4e6eb] hover:border-[#4dabf7]"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sleepOnly}
+                onChange={(e) => setSleepOnly(e.target.checked)}
+                className="w-4 h-4 rounded border-[#2a3a52] bg-[#1a2332] text-[#4dabf7] focus:ring-[#4dabf7] focus:ring-offset-0 cursor-pointer"
+              />
+              <span className="text-sm text-[#a0aec0]">Sleep only (10p–6a)</span>
+            </label>
+            <div className="flex gap-1.5">
+              {RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.days}
+                  onClick={() => setRangeDays(opt.days)}
+                  className={`px-3 py-1.5 rounded-md text-[13px] font-medium border transition-colors duration-200 ${
+                    rangeDays === opt.days
+                      ? "bg-[#4dabf7] border-[#4dabf7] text-[#0b1220]"
+                      : "bg-[#1a2332] border-[#2a3a52] text-[#e4e6eb] hover:border-[#4dabf7]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
@@ -134,6 +160,7 @@ export default function HistoryPage() {
               summary={s}
               odi={nightData[s.nightDate] ?? null}
               onVisible={() => loadNightReadings(s.nightDate)}
+              sleepOnly={sleepOnly}
               classifyMinSpo2={classifyMinSpo2}
               classifyPctBelow={classifyPctBelow}
               classifyOdi={classifyOdi}

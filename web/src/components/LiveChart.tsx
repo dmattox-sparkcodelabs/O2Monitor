@@ -50,7 +50,15 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    const lastHistTs = historical.length > 0 ? historical[historical.length - 1].timestamp : 0;
+    // Dedup readings within 1 second (mixed Z/no-Z timestamp formats)
+    const deduped: ChartPoint[] = [];
+    for (const p of historical) {
+      if (deduped.length === 0 || p.timestamp - deduped[deduped.length - 1].timestamp >= 1000) {
+        deduped.push(p);
+      }
+    }
+
+    const lastHistTs = deduped.length > 0 ? deduped[deduped.length - 1].timestamp : 0;
 
     const realtime: ChartPoint[] = realtimeReadings
       .filter((r) => new Date(r.timestamp).getTime() > lastHistTs)
@@ -61,7 +69,7 @@ export default function LiveChart({ readings, realtimeReadings, windowHours }: L
         heartRate: r.heartRate,
       }));
 
-    return [...historical, ...realtime];
+    return [...deduped, ...realtime];
   }, [readings, realtimeReadings]);
 
   // Scrollbar state: position is 0-1 representing where the window starts

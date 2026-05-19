@@ -1,6 +1,7 @@
 package com.o2monitor.app.ble
 
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -16,11 +17,13 @@ import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.o2monitor.app.MainActivity
@@ -58,6 +61,7 @@ class BleService : Service() {
         const val EXTRA_UPLOAD_OK = "uploadOk"
         const val EXTRA_STATE = "state"
         const val ACTION_STOP = "com.o2monitor.STOP"
+        const val ACTION_SYNC_NOW = "com.o2monitor.SYNC_NOW"
 
         private const val NOTIFICATION_CHANNEL_ID = "o2monitor_ble_v2"
         private const val NOTIFICATION_ID = 1001
@@ -90,6 +94,15 @@ class BleService : Service() {
     @Volatile private var historySyncBusy = false
     @Volatile private var historyClockSynced = false
 
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val alarmManager by lazy { getSystemService(Context.ALARM_SERVICE) as AlarmManager }
+    private val syncAlarmPendingIntent by lazy {
+        val intent = Intent(this, SyncAlarmReceiver::class.java).apply {
+            action = SyncAlarmReceiver.ACTION_SYNC_ALARM
+        }
+        PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
     // Runnable refs for cancellation
     private val scanTimeoutRunnable = Runnable { onScanTimeout() }
     private val mtuRequestTimeoutRunnable = Runnable { gatt?.let { discoverServicesOnce(it) } }
@@ -118,6 +131,13 @@ class BleService : Service() {
         if (intent?.action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_SYNC_NOW) {
+            if (state == BleState.READING) {
+                android.util.Log.i(TAG, "Alarm-triggered sync")
+                syncHistory()
+            }
+            return START_STICKY
         }
         if (state == BleState.IDLE) {
             transitionToScanning()
@@ -495,6 +515,23 @@ class BleService : Service() {
         val complete: Boolean
     )
 
+    @SuppressLint("WakelockTimeout")
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "O2Monitor:SyncWakeLock")
+        }
+        wakeLock?.let {
+            if (!it.isHeld) it.acquire(90_000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+    }
+
     private fun syncHistory() {
         if (state != BleState.READING) return
         if (historySyncBusy) {
@@ -517,13 +554,13 @@ class BleService : Service() {
         }
 
         historySyncBusy = true
+        acquireWakeLock()
         val attemptStartedAtMs = System.currentTimeMillis()
         serviceScope.launch {
             var result = HistorySyncResult()
             var uploadOk = false
             var queueCount = 0
             try {
-                // Live sensor read only — no history download for battery savings
                 val liveReading = try { s.readSensors() } catch (_: Exception) { null }
                 if (liveReading != null) {
                     repository.enqueue(patientId, liveReading)
@@ -541,6 +578,7 @@ class BleService : Service() {
                 android.util.Log.w(TAG, "History sync failed: ${e.message}", e)
             } finally {
                 historySyncBusy = false
+                releaseWakeLock()
             }
 
             handler.post {
@@ -552,10 +590,20 @@ class BleService : Service() {
         }
     }
 
+    @SuppressLint("ScheduleExactAlarm")
     private fun scheduleHistorySync(delayMs: Long) {
         if (state != BleState.READING) return
         handler.removeCallbacks(historySyncRunnable)
-        handler.postDelayed(historySyncRunnable, delayMs)
+        if (delayMs <= 5_000L) {
+            handler.postDelayed(historySyncRunnable, delayMs)
+        } else {
+            val triggerAt = System.currentTimeMillis() + delayMs
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, syncAlarmPendingIntent)
+        }
+    }
+
+    private fun cancelSyncAlarm() {
+        alarmManager.cancel(syncAlarmPendingIntent)
     }
 
     private fun scheduleNextHistorySync(deviceResponded: Boolean, attemptStartedAtMs: Long) {
@@ -868,6 +916,7 @@ class BleService : Service() {
         handler.removeCallbacks(historySyncRunnable)
         handler.removeCallbacks(staleWatchdogRunnable)
         handler.removeCallbacks(reconnectRunnable)
+        cancelSyncAlarm()
     }
 
     private fun ensureHistoryFileProgressLoaded(patientId: String) {

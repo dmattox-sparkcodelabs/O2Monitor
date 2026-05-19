@@ -41,6 +41,14 @@ export async function fetchReadings(patientId: string, hours: number = 1): Promi
   return res.json();
 }
 
+export async function fetchNightReadings(patientId: string, since: string, until: string): Promise<ReadingsResponse> {
+  const res = await fetch(`/api/patients/${patientId}/readings?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&limit=50000`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch night readings: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchSummaries(patientId: string, days: number = 30): Promise<SummariesResponse> {
   const res = await fetch(`/api/patients/${patientId}/summaries?days=${days}`, {
     headers: authHeaders(),
