@@ -44,11 +44,12 @@ credentials.json
 android/**/build/
 android/**/.gradle/
 android/**/local.properties
-*.apk
+# *.apk — removed so we can distribute debug builds via git
 
 # Node
 node_modules/
-dist/
+api/dist/
+web/dist/
 
 # Azure Functions
 api/local.settings.json
