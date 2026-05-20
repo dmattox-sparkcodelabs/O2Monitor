@@ -1,6 +1,7 @@
 package com.o2monitor.app.data
 
 import android.content.SharedPreferences
+import android.util.Log
 import com.o2monitor.app.ble.OxiReading
 import com.o2monitor.app.network.ApiClient
 import com.o2monitor.app.network.ReadingPayload
@@ -45,14 +46,25 @@ class ReadingRepository(
     }
 
     suspend fun flushToCloud(): Boolean {
-        val baseUrl = prefs.getString("server_url", null) ?: return false
-        val apiKey = prefs.getString("api_key", null) ?: return false
+        val baseUrl = prefs.getString("server_url", null)
+        if (baseUrl == null) {
+            Log.w(TAG, "flushToCloud: server_url not configured")
+            return false
+        }
+        val apiKey = prefs.getString("api_key", null)
+        if (apiKey == null) {
+            Log.w(TAG, "flushToCloud: api_key not configured")
+            return false
+        }
         val client = ApiClient(httpClient, baseUrl, apiKey)
 
         var totalFlushed = 0
         while (true) {
             val readings = dao.peek(200)
             if (readings.isEmpty()) break
+
+            val mode = if (readings.size == 1) "single" else "batch"
+            Log.i(TAG, "flushToCloud: sending $mode of ${readings.size} to $baseUrl")
 
             val payloads = readings.map { reading ->
                 ReadingPayload(
@@ -76,10 +88,17 @@ class ReadingRepository(
             if (result.isSuccess) {
                 dao.deleteByIds(readings.map { it.id })
                 totalFlushed += readings.size
+                Log.i(TAG, "flushToCloud: $mode succeeded, flushed ${readings.size} (total $totalFlushed)")
             } else {
+                val ex = result.exceptionOrNull()
+                Log.w(TAG, "flushToCloud: $mode failed — ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                val pending = dao.count()
+                Log.i(TAG, "flushToCloud: $totalFlushed flushed this cycle, $pending still pending")
                 return totalFlushed > 0
             }
         }
+        val pending = dao.count()
+        Log.i(TAG, "flushToCloud: complete, $totalFlushed flushed, $pending pending")
         return true
     }
 
@@ -88,5 +107,9 @@ class ReadingRepository(
     suspend fun pruneExpired() {
         val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000
         dao.pruneExpired(cutoff)
+    }
+
+    companion object {
+        private const val TAG = "ReadingRepo"
     }
 }

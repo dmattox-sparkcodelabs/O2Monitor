@@ -1,5 +1,6 @@
 package com.o2monitor.app.network
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -75,7 +76,9 @@ class ApiClient(
                 .build()
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                error("HTTP ${response.code}: ${response.body?.string()}")
+                val body = response.body?.string()
+                Log.w(TAG, "getPatients: HTTP ${response.code} — $body")
+                error("HTTP ${response.code}: $body")
             }
             val body = response.body?.string() ?: error("Empty response body")
             json.decodeFromString<List<PatientSummary>>(body)
@@ -84,16 +87,20 @@ class ApiClient(
 
     suspend fun postReading(reading: ReadingPayload): Result<IngestResponse> = withContext(Dispatchers.IO) {
         runCatching {
+            val url = "${baseUrl.trimEnd('/')}/api/readings"
             val body = json.encodeToString(reading).toRequestBody(JSON_MEDIA_TYPE)
             val request = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/readings")
+                .url(url)
                 .addHeader("x-api-key", apiKey)
                 .post(body)
                 .build()
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                error("HTTP ${response.code}: ${response.body?.string()}")
+                val respBody = response.body?.string()
+                Log.w(TAG, "postReading: HTTP ${response.code} — $respBody")
+                error("HTTP ${response.code}: $respBody")
             }
+            Log.d(TAG, "postReading: HTTP ${response.code}")
             val responseBody = response.body?.string() ?: error("Empty response body")
             json.decodeFromString<IngestResponse>(responseBody)
         }
@@ -108,7 +115,9 @@ class ApiClient(
                 .build()
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                error("HTTP ${response.code}: ${response.body?.string()}")
+                val body = response.body?.string()
+                Log.w(TAG, "getReadings: HTTP ${response.code} — $body")
+                error("HTTP ${response.code}: $body")
             }
             val body = response.body?.string() ?: error("Empty response body")
             json.decodeFromString<ReadingsResponse>(body)
@@ -117,18 +126,27 @@ class ApiClient(
 
     suspend fun postBatch(readings: List<ReadingPayload>): Result<BatchResponse> = withContext(Dispatchers.IO) {
         runCatching {
+            val url = "${baseUrl.trimEnd('/')}/api/readings/batch"
             val body = json.encodeToString(BatchRequest(readings)).toRequestBody(JSON_MEDIA_TYPE)
             val request = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/api/readings/batch")
+                .url(url)
                 .addHeader("x-api-key", apiKey)
                 .post(body)
                 .build()
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                error("HTTP ${response.code}: ${response.body?.string()}")
+                val respBody = response.body?.string()
+                Log.w(TAG, "postBatch: HTTP ${response.code} — $respBody")
+                error("HTTP ${response.code}: $respBody")
             }
             val responseBody = response.body?.string() ?: error("Empty response body")
-            json.decodeFromString<BatchResponse>(responseBody)
+            val result = json.decodeFromString<BatchResponse>(responseBody)
+            Log.d(TAG, "postBatch: HTTP ${response.code}, accepted=${result.accepted} rejected=${result.rejected}")
+            result
         }
+    }
+
+    companion object {
+        private const val TAG = "ApiClient"
     }
 }
