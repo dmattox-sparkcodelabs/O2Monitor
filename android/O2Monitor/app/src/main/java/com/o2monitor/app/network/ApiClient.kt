@@ -55,7 +55,11 @@ data class ReadingsResponse(
 data class BatchRequest(val readings: List<ReadingPayload>)
 
 @Serializable
-data class BatchResponse(val accepted: Int, val rejected: Int)
+data class BatchResponse(
+    val accepted: Int,
+    val rejected: Int,
+    val rejectedIndices: List<Int> = emptyList()
+)
 
 private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 

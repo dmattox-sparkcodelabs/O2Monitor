@@ -136,6 +136,11 @@ class BleService : Service() {
             if (state == BleState.READING) {
                 android.util.Log.i(TAG, "Alarm-triggered sync")
                 syncHistory()
+            } else {
+                android.util.Log.i(TAG, "Alarm-triggered flush (BLE state=$state)")
+                serviceScope.launch {
+                    repository.flushToCloud()
+                }
             }
             return START_STICKY
         }

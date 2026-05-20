@@ -79,22 +79,38 @@ class ReadingRepository(
                 )
             }
 
-            val result = if (readings.size == 1) {
-                client.postReading(payloads[0]).map { Unit }
+            if (readings.size == 1) {
+                val result = client.postReading(payloads[0])
+                if (result.isSuccess) {
+                    dao.deleteByIds(readings.map { it.id })
+                    totalFlushed += 1
+                    Log.i(TAG, "flushToCloud: single succeeded (total $totalFlushed)")
+                } else {
+                    val ex = result.exceptionOrNull()
+                    Log.w(TAG, "flushToCloud: single failed — ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                    val pending = dao.count()
+                    Log.i(TAG, "flushToCloud: $totalFlushed flushed this cycle, $pending still pending")
+                    return totalFlushed > 0
+                }
             } else {
-                client.postBatch(payloads).map { Unit }
-            }
-
-            if (result.isSuccess) {
-                dao.deleteByIds(readings.map { it.id })
-                totalFlushed += readings.size
-                Log.i(TAG, "flushToCloud: $mode succeeded, flushed ${readings.size} (total $totalFlushed)")
-            } else {
-                val ex = result.exceptionOrNull()
-                Log.w(TAG, "flushToCloud: $mode failed — ${ex?.javaClass?.simpleName}: ${ex?.message}")
-                val pending = dao.count()
-                Log.i(TAG, "flushToCloud: $totalFlushed flushed this cycle, $pending still pending")
-                return totalFlushed > 0
+                val result = client.postBatch(payloads)
+                if (result.isSuccess) {
+                    val batch = result.getOrThrow()
+                    val rejectedIds = batch.rejectedIndices.map { readings[it].id }
+                    val acceptedIds = readings.map { it.id }
+                    dao.deleteByIds(acceptedIds)
+                    totalFlushed += batch.accepted
+                    if (rejectedIds.isNotEmpty()) {
+                        Log.w(TAG, "flushToCloud: batch dropped ${rejectedIds.size} invalid rows")
+                    }
+                    Log.i(TAG, "flushToCloud: batch accepted=${batch.accepted} rejected=${batch.rejected} (total $totalFlushed)")
+                } else {
+                    val ex = result.exceptionOrNull()
+                    Log.w(TAG, "flushToCloud: batch failed — ${ex?.javaClass?.simpleName}: ${ex?.message}")
+                    val pending = dao.count()
+                    Log.i(TAG, "flushToCloud: $totalFlushed flushed this cycle, $pending still pending")
+                    return totalFlushed > 0
+                }
             }
         }
         val pending = dao.count()

@@ -112,6 +112,7 @@ object BleProtocol {
         val movement = payload[9].toInt() and 0xFF
         if (flag == 0xFF) return null          // sensor off
         if (flag == 0x00 && spo2 == 0 && hr == 0) return null  // sensor idle
+        if (spo2 !in 0..100) return null       // sentinel value (e.g. 127 = no finger)
         return OxiReading(
             spo2 = spo2,
             heartRate = hr,

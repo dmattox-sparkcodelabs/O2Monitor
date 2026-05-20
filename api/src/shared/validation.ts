@@ -66,12 +66,5 @@ export function validateBatchRequest(body: unknown): ValidationError | null {
     return { code: "INVALID_REQUEST", message: "readings array must not be empty" };
   }
 
-  for (let i = 0; i < b.readings.length; i++) {
-    const err = validateIngestRequest(b.readings[i]);
-    if (err) {
-      return { code: err.code, message: `readings[${i}]: ${err.message}` };
-    }
-  }
-
   return null;
 }
